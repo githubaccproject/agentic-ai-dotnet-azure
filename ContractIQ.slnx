@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="src/ContractIQ.Api/ContractIQ.Api.csproj" />
+  <Project Path="src/ContractIQ.Application/ContractIQ.Application.csproj" />
+  <Project Path="src/ContractIQ.Domain/ContractIQ.Domain.csproj" />
+  <Project Path="src/ContractIQ.Infrastructure/ContractIQ.Infrastructure.csproj" />
+  <Project Path="src/ContractIQ.Worker/ContractIQ.Worker.csproj" />
+</Solution>
