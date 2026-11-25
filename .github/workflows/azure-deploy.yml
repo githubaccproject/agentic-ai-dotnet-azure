@@ -25,10 +25,19 @@ on:
         default: ''
       openai_location:
         type: string
-        default: centralindia
+        default: eastus
       chat_version:
         type: string
-        default: '2024-07-18'
+        default: '2025-04-14'
+      chat_model:
+        type: string
+        default: gpt-4.1-mini
+      chat_sku:
+        type: string
+        default: GlobalStandard
+      embedding_sku:
+        type: string
+        default: Standard
       embedding_version:
         type: string
         default: '1'
@@ -70,6 +79,9 @@ jobs:
           OPERATION: ${{ inputs.operation }}
           CONFIRM: ${{ inputs.confirm_trial }}
           AI_LOCATION: ${{ inputs.openai_location }}
+          CHAT_MODEL: ${{ inputs.chat_model }}
+          CHAT_SKU: ${{ inputs.chat_sku }}
+          EMBEDDING_SKU: ${{ inputs.embedding_sku }}
           CHAT_VERSION: ${{ inputs.chat_version }}
           EMBEDDING_VERSION: ${{ inputs.embedding_version }}
         run: |
@@ -78,9 +90,9 @@ jobs:
             echo "Explicit trial credit confirmation required."
             exit 1
           fi
-          az deployment group what-if --resource-group rg-telecomiq-dev --template-file deploy/trial.bicep --parameters openAiLocation="$AI_LOCATION" chatVersion="$CHAT_VERSION" embeddingVersion="$EMBEDDING_VERSION"
+          az deployment group what-if --resource-group rg-telecomiq-dev --template-file deploy/trial.bicep --parameters openAiLocation="$AI_LOCATION" chatModel="$CHAT_MODEL" chatSku="$CHAT_SKU" embeddingSku="$EMBEDDING_SKU" chatVersion="$CHAT_VERSION" embeddingVersion="$EMBEDDING_VERSION"
           if [[ "$OPERATION" == deploy-trial ]]; then
-            az deployment group create --resource-group rg-telecomiq-dev --template-file deploy/trial.bicep --parameters openAiLocation="$AI_LOCATION" chatVersion="$CHAT_VERSION" embeddingVersion="$EMBEDDING_VERSION" --query properties.outputs -o json
+            az deployment group create --resource-group rg-telecomiq-dev --template-file deploy/trial.bicep --parameters openAiLocation="$AI_LOCATION" chatModel="$CHAT_MODEL" chatSku="$CHAT_SKU" embeddingSku="$EMBEDDING_SKU" chatVersion="$CHAT_VERSION" embeddingVersion="$EMBEDDING_VERSION" --query properties.outputs -o json
           fi
       - name: Discover regional OpenAI models
         if: inputs.operation == 'discover-models'
