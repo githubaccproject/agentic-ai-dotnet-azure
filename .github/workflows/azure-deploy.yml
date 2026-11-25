@@ -2,7 +2,7 @@ name: Azure TelecomIQ
 on:
   push:
     branches: [main]
-    paths: [.github/workflows/azure-deploy.yml, deploy/policies-index.json]
+    paths: [.github/workflows/azure-deploy.yml, deploy/policies-index.json, deploy/search-index.json]
   workflow_dispatch:
     inputs:
       operation:
@@ -83,7 +83,7 @@ jobs:
           az cognitiveservices account show -g "$rg" -n telecomiq-di-fxwt5ietl6nyc --query '{name:name,sku:sku.name,state:properties.provisioningState}' -o json
           az rest --method get --resource https://search.azure.com --url 'https://telecomiq-fxwt5ietl6nyc.search.windows.net/indexes?api-version=2024-07-01&%24select=name' --query 'value[].name' -o json
       - name: Create missing vector indexes and verify schema
-        if: inputs.operation == 'create-indexes' || (github.event_name == 'push' && contains(github.event.head_commit.modified, 'deploy/policies-index.json'))
+        if: github.event_name == 'push' || inputs.operation == 'create-indexes'
         run: |
           set -euo pipefail
           endpoint='https://telecomiq-fxwt5ietl6nyc.search.windows.net'
