@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
-GROUP="${RESOURCE_GROUP:-rg-contractiq-dev}"
+GROUP="${RESOURCE_GROUP:-rg-telecomiq-dev}"
 LOCATION="${AZURE_LOCATION:-centralindia}"
 SEARCH="${ENABLE_SEARCH:-false}"
 DOCUMENTS="${ENABLE_DOCUMENT_INTELLIGENCE:-false}"

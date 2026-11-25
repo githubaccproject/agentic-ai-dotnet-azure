@@ -20,6 +20,6 @@ The current .NET implementation still expects real Azure Blob, Service Bus, Azur
 ## Cleanup
 Only if this is a dedicated disposable group and you have checked all its contents:
 
-    az group delete --name rg-contractiq-dev
+    az group delete --name rg-telecomiq-dev
 
 This deletes every resource in the group. Bicep has not been compiled or deployed in an Azure subscription by the assistant.

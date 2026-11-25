@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="src/TelecomIQ.Api/TelecomIQ.Api.csproj" />
+  <Project Path="src/TelecomIQ.Application/TelecomIQ.Application.csproj" />
+  <Project Path="src/TelecomIQ.Domain/TelecomIQ.Domain.csproj" />
+  <Project Path="src/TelecomIQ.Infrastructure/TelecomIQ.Infrastructure.csproj" />
+  <Project Path="src/TelecomIQ.Worker/TelecomIQ.Worker.csproj" />
+</Solution>
