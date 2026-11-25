@@ -9,6 +9,8 @@ on:
           - verify
           - preview
           - deploy-free
+          - preview-trial
+          - deploy-trial
         default: verify
       enable_search:
         type: boolean
@@ -16,6 +18,19 @@ on:
       enable_document_intelligence:
         type: boolean
         default: false
+      confirm_trial:
+        description: Type USE-TRIAL-CREDITS for deploy-trial
+        type: string
+        default: ''
+      openai_location:
+        type: string
+        default: centralindia
+      chat_version:
+        type: string
+        default: '2024-07-18'
+      embedding_version:
+        type: string
+        default: '1'
 permissions:
   contents: read
   id-token: write
@@ -37,7 +52,7 @@ jobs:
       - name: Verify scoped access
         run: az group show --name rg-telecomiq-dev --query provisioningState -o tsv
       - name: Preview or deploy free resources
-        if: inputs.operation != 'verify'
+        if: inputs.operation == 'preview' || inputs.operation == 'deploy-free'
         env:
           OPERATION: ${{ inputs.operation }}
           ENABLE_SEARCH: ${{ inputs.enable_search }}
@@ -47,4 +62,22 @@ jobs:
           az deployment group what-if --resource-group rg-telecomiq-dev --template-file deploy/main.bicep --parameters enableSearch="$ENABLE_SEARCH" enableDocumentIntelligence="$ENABLE_DI"
           if [[ "$OPERATION" == deploy-free ]]; then
             az deployment group create --resource-group rg-telecomiq-dev --template-file deploy/main.bicep --parameters enableSearch="$ENABLE_SEARCH" enableDocumentIntelligence="$ENABLE_DI" --output none
+          fi
+      - name: Preview or deploy trial resources
+        if: inputs.operation == 'preview-trial' || inputs.operation == 'deploy-trial'
+        env:
+          OPERATION: ${{ inputs.operation }}
+          CONFIRM: ${{ inputs.confirm_trial }}
+          AI_LOCATION: ${{ inputs.openai_location }}
+          CHAT_VERSION: ${{ inputs.chat_version }}
+          EMBEDDING_VERSION: ${{ inputs.embedding_version }}
+        run: |
+          set -euo pipefail
+          if [[ "$OPERATION" == deploy-trial && "$CONFIRM" != USE-TRIAL-CREDITS ]]; then
+            echo "Explicit trial credit confirmation required."
+            exit 1
+          fi
+          az deployment group what-if --resource-group rg-telecomiq-dev --template-file deploy/trial.bicep --parameters openAiLocation="$AI_LOCATION" chatVersion="$CHAT_VERSION" embeddingVersion="$EMBEDDING_VERSION"
+          if [[ "$OPERATION" == deploy-trial ]]; then
+            az deployment group create --resource-group rg-telecomiq-dev --template-file deploy/trial.bicep --parameters openAiLocation="$AI_LOCATION" chatVersion="$CHAT_VERSION" embeddingVersion="$EMBEDDING_VERSION" --query properties.outputs -o json
           fi
