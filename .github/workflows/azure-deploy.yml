@@ -61,6 +61,23 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Verify scoped access
         run: az group show --name rg-telecomiq-dev --query provisioningState -o tsv
+      - name: Verify deployed inventory
+        if: inputs.operation == 'verify'
+        run: |
+          set -euo pipefail
+          rg=rg-telecomiq-dev
+          az resource list -g "$rg" --query '[].{name:name,type:type,region:location}' -o table
+          az deployment group show -g "$rg" -n trial --query properties.provisioningState -o tsv
+          az cognitiveservices account deployment list -g "$rg" -n aoai-tq-fxwt5ietl6nyc --query '[].{name:name,model:properties.model.name,version:properties.model.version,state:properties.provisioningState}' -o table
+          az servicebus queue show -g "$rg" --namespace-name sb-tq-fxwt5ietl6nyc -n contract-jobs --query '{name:name,status:status,maxDeliveryCount:maxDeliveryCount}' -o json
+          storage=$(az storage account show -g "$rg" -n sttqfxwt5ietl6nyc --query id -o tsv)
+          arm=$(az cloud show --query endpoints.resourceManager -o tsv)
+          for name in contracts policies; do
+            az rest --method get --url "${arm%/}${storage}/blobServices/default/containers/${name}?api-version=2023-05-01" --query '{name:name,publicAccess:properties.publicAccess}' -o json
+          done
+          az search service show -g "$rg" -n telecomiq-fxwt5ietl6nyc --query '{name:name,sku:sku.name,state:provisioningState,disableLocalAuth:disableLocalAuth}' -o json
+          az cognitiveservices account show -g "$rg" -n telecomiq-di-fxwt5ietl6nyc --query '{name:name,sku:sku.name,state:properties.provisioningState}' -o json
+          az rest --method get --resource https://search.azure.com --url 'https://telecomiq-fxwt5ietl6nyc.search.windows.net/indexes?api-version=2024-07-01&%24select=name' --query 'value[].name' -o json
       - name: Preview or deploy free resources
         if: inputs.operation == 'preview' || inputs.operation == 'deploy-free'
         env:
