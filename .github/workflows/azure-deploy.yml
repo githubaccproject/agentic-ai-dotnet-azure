@@ -1,5 +1,8 @@
 name: Azure TelecomIQ
 on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/azure-deploy.yml]
   workflow_dispatch:
     inputs:
       operation:
@@ -62,7 +65,7 @@ jobs:
       - name: Verify scoped access
         run: az group show --name rg-telecomiq-dev --query provisioningState -o tsv
       - name: Verify deployed inventory
-        if: inputs.operation == 'verify'
+        if: github.event_name == 'push' || inputs.operation == 'verify'
         run: |
           set -euo pipefail
           rg=rg-telecomiq-dev
