@@ -1,0 +1,50 @@
+name: Azure TelecomIQ
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Azure operation
+        type: choice
+        options:
+          - verify
+          - preview
+          - deploy-free
+        default: verify
+      enable_search:
+        type: boolean
+        default: false
+      enable_document_intelligence:
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: telecomiq-azure
+  cancel-in-progress: false
+jobs:
+  azure:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: azure-dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Verify scoped access
+        run: az group show --name rg-telecomiq-dev --query provisioningState -o tsv
+      - name: Preview or deploy free resources
+        if: inputs.operation != 'verify'
+        env:
+          OPERATION: ${{ inputs.operation }}
+          ENABLE_SEARCH: ${{ inputs.enable_search }}
+          ENABLE_DI: ${{ inputs.enable_document_intelligence }}
+        run: |
+          set -euo pipefail
+          az deployment group what-if --resource-group rg-telecomiq-dev --template-file deploy/main.bicep --parameters enableSearch="$ENABLE_SEARCH" enableDocumentIntelligence="$ENABLE_DI"
+          if [[ "$OPERATION" == deploy-free ]]; then
+            az deployment group create --resource-group rg-telecomiq-dev --template-file deploy/main.bicep --parameters enableSearch="$ENABLE_SEARCH" enableDocumentIntelligence="$ENABLE_DI" --output none
+          fi
