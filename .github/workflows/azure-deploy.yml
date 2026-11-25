@@ -7,6 +7,7 @@ on:
         type: choice
         options:
           - verify
+          - discover-models
           - preview
           - deploy-free
           - preview-trial
@@ -81,3 +82,9 @@ jobs:
           if [[ "$OPERATION" == deploy-trial ]]; then
             az deployment group create --resource-group rg-telecomiq-dev --template-file deploy/trial.bicep --parameters openAiLocation="$AI_LOCATION" chatVersion="$CHAT_VERSION" embeddingVersion="$EMBEDDING_VERSION" --query properties.outputs -o json
           fi
+      - name: Discover regional OpenAI models
+        if: inputs.operation == 'discover-models'
+        env:
+          AI_LOCATION: ${{ inputs.openai_location }}
+        run: |
+          az cognitiveservices model list --location "$AI_LOCATION" --query "[?kind=='OpenAI' && (model.name=='gpt-4.1-mini' || model.name=='gpt-5-mini' || model.name=='text-embedding-3-small')].{Model:model.name,Version:model.version,SKUs:model.skus,Lifecycle:model.lifecycleStatus}" -o json
