@@ -11,9 +11,9 @@ public sealed class RiskReviewOrchestrator(IRepository repository,RiskAgent agen
   await repository.SaveReview(review with {Status="Processing"},ct);
   try {
    var results=await Task.WhenAll(
-    agent.Run(contractId,"Legal","indemnity liability termination dispute resolution",ct),
-    agent.Run(contractId,"Financial","payment penalties retainage price changes",ct),
-    agent.Run(contractId,"Compliance","insurance safety regulations obligations",ct));
+    agent.Run(contractId,"Vendor Legal","vendor indemnification liability caps termination exit assistance intellectual property subcontracting dispute resolution",ct),
+    agent.Run(contractId,"Commercial","vendor pricing annual escalation payment terms integration fees service credits penalties renewal charges",ct),
+    agent.Run(contractId,"Telecom Security & Compliance","5G network availability SLA outage disaster recovery security incident notification customer data privacy retention cross-border transfers audit access encryption",ct));
    await repository.SaveReview(review with {Status="Completed",Findings=results.SelectMany(x=>x).ToArray()},ct);
   } catch {if(!ct.IsCancellationRequested) await repository.SaveReview(review with {Status="Failed"},ct);throw;}
  }
