@@ -1,7 +1,9 @@
-# ContractIQ — Agentic AI .NET Azure
-Reference implementation for contract risk review. Synthetic documents only. Not production-ready.
+# TelecomIQ — Telecom Vendor Risk Intelligence
+Reference implementation for telecom vendor agreement risk review, inspired by telecom operator workflows. Not affiliated with T-Mobile. Synthetic documents only. Not production-ready.
 ## Flow
-Development API uploads PDF to Blob, saves Mongo metadata and sends a Service Bus job. Worker extracts pages with Document Intelligence, chunks and embeds text, indexes Azure AI Search. Review jobs run three parallel category-specific agents using hybrid retrieval and Azure OpenAI JSON output. Findings are filtered against retrieved evidence IDs; human review is required.
+Development API uploads PDF to Blob, saves Mongo metadata and sends a Service Bus job. Worker extracts pages with Document Intelligence, chunks and embeds text, indexes Azure AI Search. Review jobs run three parallel agents (Vendor Legal, Commercial, Telecom Security & Compliance) using hybrid retrieval and Azure OpenAI JSON output. Findings are filtered against retrieved evidence IDs; human review is required.
+## Naming and compatibility
+TelecomIQ is the business-facing name. Existing ContractIQ .NET project names, namespaces, API routes and infrastructure identifiers are retained for compatibility. The React UI is in frontend/; see frontend/README.md.
 ## Setup
 .NET 10 SDK; provision Blob container, Service Bus queue, MongoDB, Document Intelligence, Azure OpenAI chat and text-embedding-3-small (1536 dimensions), Azure AI Search. Create search index from deploy/search-index.json using Search REST API 2024-07-01. Assign appropriate data-plane RBAC roles to the developer identity and worker/API identities. Run az login locally. Set environment variables for both hosts:
 - Azure__BlobContainer (full container URL)
