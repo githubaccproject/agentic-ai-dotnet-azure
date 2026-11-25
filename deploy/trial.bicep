@@ -1,7 +1,10 @@
 targetScope = 'resourceGroup'
 param location string = resourceGroup().location
 param openAiLocation string = location
-param chatVersion string = '2024-07-18'
+param chatModel string = 'gpt-4.1-mini'
+param chatVersion string = '2025-04-14'
+param chatSku string = 'GlobalStandard'
+param embeddingSku string = 'Standard'
 param embeddingVersion string = '1'
 var suffix = uniqueString(subscription().id, resourceGroup().id)
 module free './main.bicep' = {
@@ -58,13 +61,13 @@ resource ai 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
 resource chat 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
   parent: ai
   name: 'telecomiq-chat'
-  sku: { name: 'Standard', capacity: 1 }
-  properties: { model: { format: 'OpenAI', name: 'gpt-4o-mini', version: chatVersion } }
+  sku: { name: chatSku, capacity: 1 }
+  properties: { model: { format: 'OpenAI', name: chatModel, version: chatVersion } }
 }
 resource embedding 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
   parent: ai
   name: 'telecomiq-embedding'
-  sku: { name: 'Standard', capacity: 1 }
+  sku: { name: embeddingSku, capacity: 1 }
   properties: { model: { format: 'OpenAI', name: 'text-embedding-3-small', version: embeddingVersion } }
   dependsOn: [chat]
 }
