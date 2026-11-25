@@ -102,6 +102,7 @@ jobs:
                 all($spec.fields[]; . as $field | any($live.fields[]; .name == $field.name and .type == $field.type and (if $field.key then .key else true end) and (if $field.filterable then .filterable else true end) and (if $field.searchable then .searchable else true end) and (if $field.dimensions then .dimensions == $field.dimensions and .vectorSearchProfile == $field.vectorSearchProfile else true end))) and
                 all($spec.vectorSearch.profiles[]; . as $profile | any($live.vectorSearch.profiles[]; .name == $profile.name and .algorithm == $profile.algorithm))'
             echo "Verified $name vector index"
+          done
       - name: Preview or deploy free resources
         if: inputs.operation == 'preview' || inputs.operation == 'deploy-free'
         env:
