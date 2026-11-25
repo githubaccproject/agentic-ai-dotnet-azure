@@ -2,7 +2,7 @@ name: Azure TelecomIQ
 on:
   push:
     branches: [main]
-    paths: [.github/workflows/azure-deploy.yml]
+    paths: [.github/workflows/azure-deploy.yml, deploy/policies-index.json]
   workflow_dispatch:
     inputs:
       operation:
@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - verify
+          - create-indexes
           - discover-models
           - preview
           - deploy-free
@@ -81,6 +82,26 @@ jobs:
           az search service show -g "$rg" -n telecomiq-fxwt5ietl6nyc --query '{name:name,sku:sku.name,state:provisioningState,disableLocalAuth:disableLocalAuth}' -o json
           az cognitiveservices account show -g "$rg" -n telecomiq-di-fxwt5ietl6nyc --query '{name:name,sku:sku.name,state:properties.provisioningState}' -o json
           az rest --method get --resource https://search.azure.com --url 'https://telecomiq-fxwt5ietl6nyc.search.windows.net/indexes?api-version=2024-07-01&%24select=name' --query 'value[].name' -o json
+      - name: Create missing vector indexes and verify schema
+        if: inputs.operation == 'create-indexes' || (github.event_name == 'push' && contains(github.event.head_commit.modified, 'deploy/policies-index.json'))
+        run: |
+          set -euo pipefail
+          endpoint='https://telecomiq-fxwt5ietl6nyc.search.windows.net'
+          version='api-version=2024-07-01'
+          audience='https://search.azure.com'
+          indexes=$(az rest --method get --resource "$audience" --url "$endpoint/indexes?$version&%24select=name" -o json)
+          for schema in deploy/search-index.json deploy/policies-index.json; do
+            name=$(jq -er '.name' "$schema")
+            if ! jq -e --arg name "$name" 'any(.value[]; .name == $name)' <<< "$indexes" >/dev/null; then
+              az rest --method post --resource "$audience" --url "$endpoint/indexes?$version" --headers 'Content-Type=application/json' --body "@$schema" -o none
+            fi
+            az rest --method get --resource "$audience" --url "$endpoint/indexes/$name?$version" -o json |
+              jq -e --slurpfile expected "$schema" '
+                . as $live | $expected[0] as $spec |
+                $live.name == $spec.name and
+                all($spec.fields[]; . as $field | any($live.fields[]; .name == $field.name and .type == $field.type and (if $field.key then .key else true end) and (if $field.filterable then .filterable else true end) and (if $field.searchable then .searchable else true end) and (if $field.dimensions then .dimensions == $field.dimensions and .vectorSearchProfile == $field.vectorSearchProfile else true end))) and
+                all($spec.vectorSearch.profiles[]; . as $profile | any($live.vectorSearch.profiles[]; .name == $profile.name and .algorithm == $profile.algorithm))'
+            echo "Verified $name vector index"
       - name: Preview or deploy free resources
         if: inputs.operation == 'preview' || inputs.operation == 'deploy-free'
         env:
