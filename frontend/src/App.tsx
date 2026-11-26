@@ -249,6 +249,14 @@ export default function App() {
           <h3>Previous findings rechecked</h3><small>Previous review {review.previousReviewId}</small>
           <RevisionResults checks={review.revisionChecks ?? []}/>
         </>}
+        {reviewStatus === 'Completed' && <div className="finding">
+          <h3>Agent activity · MCP tools</h3>
+          {(review?.toolActivity ?? []).length === 0
+            ? <p className="muted">No tool calls recorded. Tools are available for policy comparisons; the model may choose not to call them.</p>
+            : <ul>{review?.toolActivity?.map((item, index) => <li key={index}>
+              <strong>{item.tool}</strong> · {item.category} · {item.status} · {item.durationMs} ms
+            </li>)}</ul>}
+        </div>}
         <p className="muted">Review AI findings and suggested wording before making a decision.</p>
       </section>
       <section>

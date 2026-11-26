@@ -9,7 +9,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 namespace TelecomIQ.Infrastructure;
-public sealed class AzureRest(HttpClient http, TokenCredential credential, IConfiguration config, ILogger<AzureRest> logger):IAi,IPolicyReviewAi,ISearch,IPolicySearch,IExtractor {
+public sealed partial class AzureRest(HttpClient http, TokenCredential credential, IConfiguration config, ILogger<AzureRest> logger):IAi,IPolicyReviewAi,ISearch,IPolicySearch,IExtractor {
  private const int MaxThrottleRetries = 3;
  private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromMinutes(2);
  private const string SearchScope = "https://search.azure.com/.default";

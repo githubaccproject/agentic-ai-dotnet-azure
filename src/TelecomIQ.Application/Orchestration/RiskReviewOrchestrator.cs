@@ -31,11 +31,12 @@ public sealed class RiskReviewOrchestrator(IRepository repository, RiskAgent age
         try
         {
             var findings = new List<Finding>();
+            var activity = new List<ToolActivity>();
             foreach (var topic in ReviewTopics)
             {
                 var result = review.Policies.Length == 0
                     ? await agent.Run(contractId, topic.Category, topic.Query, ct)
-                    : await policyAgent.Run(contractId, topic.Category, topic.Query, review.Policies, ct);
+                    : await policyAgent.Run(contractId, topic.Category, topic.Query, review.Policies, ct, review.Id, activity);
                 findings.AddRange(result);
             }
 
@@ -57,7 +58,8 @@ public sealed class RiskReviewOrchestrator(IRepository repository, RiskAgent age
             {
                 Status = "Completed",
                 Findings = findings.ToArray(),
-                RevisionChecks = checks.ToArray()
+                RevisionChecks = checks.ToArray(),
+                ToolActivity = activity.ToArray()
             }, ct);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests && !ct.IsCancellationRequested)

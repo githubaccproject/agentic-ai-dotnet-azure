@@ -14,8 +14,14 @@ public sealed record PolicyAnalysis(string Severity, string Description, string 
     string PolicyEvidenceId, string? SuggestedWording);
 public sealed record RevisionAnalysis(string Status, string Explanation, string? ContractEvidenceId);
 
+public sealed record ToolComparison(PolicyAnalysis[] Findings, PolicyEvidence[] AdditionalEvidence, ToolActivity[] Activity);
+
 public interface IPolicyReviewAi
 {
+    async Task<ToolComparison> CompareWithTools(Guid reviewId, string category, Evidence[] contract,
+        PolicyEvidence[] policy, CancellationToken ct) =>
+        new(await Compare(category, contract, policy, ct), [], []);
+
     Task<PolicyAnalysis[]> Compare(string category, Evidence[] contract, PolicyEvidence[] policy, CancellationToken ct);
     Task<RevisionAnalysis> Recheck(Finding previous, Evidence[] revised, CancellationToken ct);
 }

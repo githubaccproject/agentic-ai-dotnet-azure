@@ -1,6 +1,12 @@
 using TelecomIQ.Application.Services;
 using TelecomIQ.Infrastructure;
 
+if (args is ["--mcp-review-tools", var scopeId])
+{
+    await ReviewToolServer.Run(scopeId);
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 var appService = !string.IsNullOrEmpty(builder.Configuration["WEBSITE_SITE_NAME"]);
 var hostedDemo = builder.Configuration.GetValue<bool>("HostedDemo:Enabled");

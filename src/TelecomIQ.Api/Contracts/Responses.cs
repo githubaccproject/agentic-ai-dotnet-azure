@@ -10,9 +10,9 @@ public sealed record ContractResponse(Guid Id, string Status, Guid? PreviousCont
 
 public sealed record ReviewResponse(
     Guid Id, Guid ContractId, string Status, Finding[] Findings, PolicyReference[] Policies,
-    Guid? PreviousReviewId, RevisionCheck[] RevisionChecks, FindingDecision[] Decisions, string? FailureCode)
+    Guid? PreviousReviewId, RevisionCheck[] RevisionChecks, FindingDecision[] Decisions, string? FailureCode, ToolActivity[] ToolActivity)
 {
     public static ReviewResponse From(Review review)
         => new(review.Id, review.ContractId, review.Status, review.Findings, review.Policies,
-            review.PreviousReviewId, review.RevisionChecks, review.Decisions, review.FailureCode);
+            review.PreviousReviewId, review.RevisionChecks, review.Decisions, review.FailureCode, review.ToolActivity);
 }

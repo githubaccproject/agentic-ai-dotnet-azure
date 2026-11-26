@@ -54,4 +54,5 @@ export interface Review {
   previousReviewId?: string | null;
   revisionChecks?: RevisionCheck[];
   decisions?: Decision[];
+  toolActivity?: {category: string; tool: string; durationMs: number; status: string}[];
 }

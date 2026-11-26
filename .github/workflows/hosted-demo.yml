@@ -1,8 +1,8 @@
 name: TelecomIQ hosted demo
 on:
   push:
-    branches: [codex/azure-demo-bootstrap]
-    paths: [.github/workflows/hosted-demo.yml, deploy/hosted-demo.bicep]
+    branches: [codex/azure-demo-bootstrap, main]
+    paths: [.github/workflows/hosted-demo.yml, deploy/hosted-demo.bicep, deploy/package-hosted-demo.sh, deploy/configure-hosted-demo.sh, 'src/**', 'frontend/**', 'tests/**']
   workflow_dispatch:
     inputs:
       operation:
@@ -35,7 +35,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Preview or provision the closed free host
-        if: github.event_name == 'push' || inputs.operation == 'preview' || inputs.operation == 'provision'
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/codex/azure-demo-bootstrap') || inputs.operation == 'preview' || inputs.operation == 'provision'
         env:
           OPERATION: ${{ github.event_name == 'push' && 'provision' || inputs.operation }}
         run: |
@@ -64,7 +64,7 @@ jobs:
           fi
 
       - name: Configure Entra sign-in
-        if: inputs.operation == 'configure-auth' || github.event_name == 'push'
+        if: inputs.operation == 'configure-auth' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/azure-demo-bootstrap')
         env:
           ENTRA_CLIENT_ID: ${{ secrets.DEMO_ENTRA_CLIENT_ID || vars.DEMO_ENTRA_CLIENT_ID }}
           REVIEWER_ID: ${{ secrets.DEMO_REVIEWER_OBJECT_ID || vars.DEMO_REVIEWER_OBJECT_ID }}
@@ -115,35 +115,42 @@ jobs:
           echo "Enabled public HTTPS access behind the verified Entra sign-in settings." >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/setup-dotnet@v4
-        if: inputs.operation == 'publish'
+        if: inputs.operation == 'publish' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         with:
           dotnet-version: '10.0.x'
       - uses: actions/setup-node@v4
-        if: inputs.operation == 'publish'
+        if: inputs.operation == 'publish' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         with:
           node-version: '22'
 
+      - name: Build and validate review and MCP tools
+        if: inputs.operation == 'publish' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        run: |
+          dotnet build TelecomIQ.slnx -c Release
+          dotnet run --project tests/TelecomIQ.ReviewChecks -c Release --no-build
+          python3 tests/mcp-smoke.py
+
       - name: Verify host and configure the demo
         id: host
-        if: inputs.operation == 'publish'
+        if: inputs.operation == 'publish' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         env:
           MONGO_URL: ${{ secrets.DEMO_MONGO_CONNECTION_STRING }}
         run: bash deploy/configure-hosted-demo.sh
 
       - name: Build release package
-        if: inputs.operation == 'publish'
+        if: inputs.operation == 'publish' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         run: |
           npm --prefix frontend install --no-audit --no-fund
           bash deploy/package-hosted-demo.sh "$RUNNER_TEMP/telecomiq-hosted-demo.zip"
 
       - uses: azure/webapps-deploy@v3
-        if: inputs.operation == 'publish'
+        if: inputs.operation == 'publish' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         with:
           app-name: ${{ steps.host.outputs.app_name }}
           package: ${{ runner.temp }}/telecomiq-hosted-demo.zip
 
       - name: Check anonymous access
-        if: inputs.operation == 'publish'
+        if: inputs.operation == 'publish' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         env:
           HOST: ${{ steps.host.outputs.hostname }}
         run: |

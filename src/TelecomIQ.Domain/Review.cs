@@ -22,6 +22,8 @@ public sealed record FindingDecision(
     public string? ProposedWording { get; init; }
 }
 
+public sealed record ToolActivity(string Category, string Tool, long DurationMs, string Status);
+
 public sealed record Review(Guid Id, Guid ContractId, string Status, Finding[] Findings)
 {
     // Older MongoDB rows predate these collections and deserialize their fields as null.
@@ -31,4 +33,5 @@ public sealed record Review(Guid Id, Guid ContractId, string Status, Finding[] F
     public string? FailureCode { get; init; }
     public RevisionCheck[] RevisionChecks { get => field ?? []; init; }
     public FindingDecision[] Decisions { get => field ?? []; init; }
+    public ToolActivity[] ToolActivity { get => field ?? []; init; }
 }

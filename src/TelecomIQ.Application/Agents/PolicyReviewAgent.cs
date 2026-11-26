@@ -10,7 +10,7 @@ public sealed class PolicyReviewAgent(RagService rag, IPolicyReviewAi ai)
     private const int MaxFindingTextLength = 1500;
 
     public async Task<Finding[]> Run(Guid contractId, string category, string query,
-        PolicyReference[] selected, CancellationToken ct)
+        PolicyReference[] selected, CancellationToken ct, Guid? reviewId = null, List<ToolActivity>? activity = null)
     {
         var (contractEvidence, policyEvidence) = await rag.RetrieveComparison(contractId, query, selected, ct);
         var contracts = contractEvidence.ToDictionary(e => e.Id);
@@ -21,7 +21,18 @@ public sealed class PolicyReviewAgent(RagService rag, IPolicyReviewAi ai)
         if (contracts.Count == 0 || policies.Count == 0)
             throw new InvalidOperationException("Contract or selected policy evidence could not be retrieved.");
 
-        var findings = await ai.Compare(category, contractEvidence, policies.Values.ToArray(), ct);
+        PolicyAnalysis[] findings;
+        if (reviewId is Guid id)
+        {
+            var result = await ai.CompareWithTools(id, category, contractEvidence, policies.Values.ToArray(), ct);
+            activity?.AddRange(result.Activity);
+            foreach (var item in result.AdditionalEvidence)
+                if (selected.Contains(new PolicyReference(item.PolicyId, item.Version)))
+                    policies.TryAdd(item.Id, item);
+            findings = result.Findings;
+        }
+        else
+            findings = await ai.Compare(category, contractEvidence, policies.Values.ToArray(), ct);
         var grounded = new List<Finding>();
         foreach (var candidate in findings)
         {
