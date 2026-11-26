@@ -19,7 +19,9 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Check upload failure and runtime permissions
+      - name: Check Atlas connectivity through App Service settings and telemetry
+        env:
+          ATLAS_HOST: telecomiq-demo.pj54qnu.mongodb.net
         shell: bash
         run: |
           set -euo pipefail
@@ -27,52 +29,50 @@ jobs:
           group=rg-telecomiq-dev
           tmp=$(mktemp -d)
           trap 'rm -rf -- "$tmp"' EXIT
-          if timeout 60 az webapp log download -g "$group" -n "$app" --log-file "$tmp/app.zip" -o none >"$tmp/cli.log" 2>&1; then
-            python3 - "$tmp/app.zip" <<'PY'
-          import re
-          import sys
-          import zipfile
-          
-          trace = "9a3d4dcc602b529fa626ccb3ed2e29a0"
+          ips=$(az webapp show -g "$group" -n "$app" --query '[outboundIpAddresses, possibleOutboundIpAddresses]' -o tsv)
+          echo "App Service outbound address sets:"
+          printf '%s\n' "$ips"
+          mongo=$(az webapp config appsettings list -g "$group" -n "$app" --query "[?name=='Mongo__ConnectionString'].value | [0]" -o tsv)
+          printf '%s' "$mongo" | python3 -c 'import sys, urllib.parse
+          try:
+              uri = urllib.parse.urlsplit(sys.stdin.read().strip())
+              print("Atlas SRV hostname matches the application:", uri.scheme == "mongodb+srv" and uri.hostname == sys.argv[1])
+          except ValueError:
+              print("App Service MongoDB URI could not be parsed.")
+          ' "$ATLAS_HOST"
+          db=$(az webapp config appsettings list -g "$group" -n "$app" --query "[?name=='Mongo__Database'].value | [0]" -o tsv)
+          [[ "$db" != "telecomiq-demo" ]] || echo "The App Service points to the expected database."
+          component=$(az resource list -g "$group" --resource-type Microsoft.Insights/components --query "[?name=='$app'].id | [0]" -o tsv)
+          if [[ -z "$component" ]]; then
+            echo "The matching Application Insights resource was not found in the demo resource group."
+            exit 0
+          fi
+          az config set extension.use_dynamic_install=yes_without_prompt --only-show-errors > /dev/null 2>&1
+          query="exceptions | where operation_Id == '9a3d4dcc602b529fa626ccb3ed2e29a0' | project type, outerMessage, innermostMessage, details | take 5"
+          if timeout 80 az monitor app-insights query --ids "$component" --analytics-query "$query" --offset 6h --only-show-errors -o json > "$tmp/in.json" 2>"$tmp/cli.err"; then
+            python3 - "$tmp/in.json" <<'PY'
+          import json, re, sys
+          rows = json.load(open(sys.argv[1]))
+          raw = json.dumps(rows)
           markers = [
-              "MongoAuthenticationException", "MongoConnectionException", "MongoCommandException",
-              "MongoWriteException", "AuthenticationFailed", "Name or service not known",
-              "TimeoutException", "ServerSelection", "AuthorizationPermissionMismatch",
-              "AuthorizationFailure", "ContainerNotFound", "BlobNotFound", "ServiceBusException",
-              "MessagingEntityNotFound", "CredentialUnavailableException", "AuthenticationFailedException",
-              "RequestFailedException", "NotSupportedException", "PdfUpload", "PolicyUploadService",
-              "PolicyRepository", "PolicyStorage", "PoliciesController", "UnauthorizedAccessException",
-              "ArgumentOutOfRangeException", "InvalidOperationException", "WriteConcernError",
-              "not authorized on", "InsertOneAsync", "DefaultAzureCredential", "AmqpException",
-              "getaddrinfo", "Cannot access a disposed", "Cannot access a closed Stream",
+              'MongoConnectionException', 'MongoAuthenticationException', 'AuthenticationException',
+              'MongoCommandException', 'SocketException', 'Connection reset by peer', 'Connection refused',
+              'Network is unreachable', 'No route to host', 'Operation timed out', 'Connection timed out',
+              'RemoteCertificateNameMismatch', 'RemoteCertificateChainErrors', 'certificate', 'TLS',
+              'SSL connection', 'EndOfStreamException', 'unexpected EOF', 'forcibly closed',
+              'Resource temporarily unavailable', 'Name or service not known', 'Try again', 'Authentication failed',
+              'no such host', 'Cannot assign requested address', 'TimeoutException', 'Unknown host',
+              'Disconnected', 'ReplicaSetNoPrimary', 'HeartBeatException', 'HeartbeatException',
           ]
-          with zipfile.ZipFile(sys.argv[1]) as logs:
-              candidates = [n for n in logs.namelist() if re.search(r'(docker|application|stdout|console)', n, re.I) and n.endswith((".log", ".txt"))]
-              print(f"Application log files found: {len(candidates)}")
-              matched = False
-              for filename in candidates[-30:]:
-                  with logs.open(filename) as handle:
-                      text = handle.read(8_000_000).decode("utf-8", "replace")
-                  lines = text.splitlines()
-                  anchors = [i for i, line in enumerate(lines) if trace in line or "PolicyUploadService.Upload" in line or "PoliciesController.Upload" in line]
-                  for i in anchors[-8:]:
-                      window = "\n".join(lines[max(0, i-65):i+35])
-                      hits = [marker for marker in markers if marker.lower() in window.lower()]
-                      class_names = sorted(set(re.findall(r'\b(?:Azure|MongoDB|System|Microsoft|TelecomIQ)(?:\.[A-Za-z_][A-Za-z0-9_]*)+Exception\b', window)))
-                      if hits or class_names:
-                          matched = True
-                          print(f"Upload log match (exact trace: {trace in window}): {', '.join(hits + class_names)}")
-              if not matched:
-                  print("The upload exception was not available in the downloaded logs.")
+          print("Application Insights evidence:", ", ".join(m for m in markers if m.lower() in raw.lower()) or "No matching exception details found.")
+          codes = sorted(set(re.findall(r'SocketException\s*\(([0-9]+)\)', raw)))
+          if codes:
+              print("Socket error codes:", ", ".join(codes))
           PY
           else
-            echo "App Service log download did not return an archive."
+            if grep -qiE 'Forbidden|AuthorizationFailed|InsufficientAccessError' "$tmp/cli.err"; then
+              echo "The deployment identity cannot query Application Insights."
+            else
+              echo "Application Insights query did not complete."
+            fi
           fi
-          principal=$(az webapp identity show -g "$group" -n "$app" --query principalId -o tsv)
-          scope=$(az group show -n "$group" --query id -o tsv)
-          blob="$scope/providers/Microsoft.Storage/storageAccounts/sttqfxwt5ietl6nyc/blobServices/default/containers/policies"
-          queue="$scope/providers/Microsoft.ServiceBus/namespaces/sb-tq-fxwt5ietl6nyc/queues/hosted-demo-jobs"
-          echo "Policy container access:"
-          az role assignment list --assignee-object-id "$principal" --scope "$blob" --include-inherited --fill-principal-name false --query '[].roleDefinitionName' -o tsv
-          echo "Hosted queue access:"
-          az role assignment list --assignee-object-id "$principal" --scope "$queue" --include-inherited --fill-principal-name false --query '[].roleDefinitionName' -o tsv
