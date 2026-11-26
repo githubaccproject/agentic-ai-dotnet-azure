@@ -1,15 +1,9 @@
 name: TelecomIQ hosted demo
+run-name: Publish TelecomIQ from main c13858b
 on:
   push:
-    branches: [codex/azure-demo-bootstrap]
-    paths: [.github/workflows/hosted-demo.yml, deploy/hosted-demo.bicep]
-  workflow_dispatch:
-    inputs:
-      operation:
-        description: Free App Service operation
-        type: choice
-        options: [preview, provision, configure-auth, publish]
-        default: preview
+    branches: [codex/publish-main-c13858b]
+    paths: [.github/workflows/hosted-demo.yml]
 
 permissions:
   contents: read
@@ -28,122 +22,39 @@ jobs:
       QUEUE: hosted-demo-jobs
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: c13858bc877338cf80beb43a12bf13ba51a98226
+          persist-credentials: false
       - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Preview or provision the closed free host
-        if: github.event_name == 'push' || inputs.operation == 'preview' || inputs.operation == 'provision'
-        env:
-          OPERATION: ${{ github.event_name == 'push' && 'provision' || inputs.operation }}
-        run: |
-          set -euo pipefail
-          if az deployment group show --resource-group "$RESOURCE_GROUP" --name "$DEPLOYMENT" \
-            --query "properties.provisioningState=='Succeeded'" -o tsv 2>/dev/null | grep -qi '^true$'; then
-            echo "The demo host already exists."
-            exit 0
-          fi
-          if [[ "$OPERATION" == provision ]]; then
-            state=$(az provider show --namespace Microsoft.Web --query registrationState -o tsv --only-show-errors || true)
-            if [[ "$state" != Registered ]]; then
-              if ! timeout 180 az provider register --namespace Microsoft.Web --wait --only-show-errors; then
-                echo "An administrator can register Microsoft.Web on the Azure subscription, then rerun this job."
-                exit 1
-              fi
-            fi
-          fi
-          az deployment group what-if -g "$RESOURCE_GROUP" -f deploy/hosted-demo.bicep --result-format ResourceIdOnly
-          if [[ "$OPERATION" == provision ]]; then
-            az deployment group create -g "$RESOURCE_GROUP" -n "$DEPLOYMENT" \
-              -f deploy/hosted-demo.bicep --query properties.outputs -o json
-            hostname=$(az deployment group show -g "$RESOURCE_GROUP" -n "$DEPLOYMENT" \
-              --query properties.outputs.hostname.value -o tsv)
-            echo "Closed F1 host provisioned at $hostname." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Configure Entra sign-in
-        if: inputs.operation == 'configure-auth' || github.event_name == 'push'
-        env:
-          ENTRA_CLIENT_ID: ${{ secrets.DEMO_ENTRA_CLIENT_ID || vars.DEMO_ENTRA_CLIENT_ID }}
-          REVIEWER_ID: ${{ secrets.DEMO_REVIEWER_OBJECT_ID || vars.DEMO_REVIEWER_OBJECT_ID }}
-          ENTRA_CLIENT_SECRET: ${{ secrets.DEMO_ENTRA_CLIENT_SECRET }}
-        run: |
-          set -euo pipefail
-          : "${ENTRA_CLIENT_ID:?Set DEMO_ENTRA_CLIENT_ID}"
-          : "${REVIEWER_ID:?Set DEMO_REVIEWER_OBJECT_ID}"
-          : "${ENTRA_CLIENT_SECRET:?Set DEMO_ENTRA_CLIENT_SECRET}"
-          printf '::add-mask::%s\n' "$ENTRA_CLIENT_ID" "$REVIEWER_ID"
-          app=$(az deployment group show -g "$RESOURCE_GROUP" -n "$DEPLOYMENT" \
-            --query properties.outputs.name.value -o tsv)
-          : "${app:?Provision the F1 host first}"
-          enabled=$(az webapp config appsettings list -g "$RESOURCE_GROUP" -n "$app" \
-            --query "[?name=='HostedDemo__Enabled'].value | [0]" -o tsv)
-          if [[ "$enabled" == true ]]; then
-            echo "The demo is already published. Manage sign-in settings on the app."
-            exit 0
-          fi
-          config=$(mktemp)
-          trap 'rm -f -- "$config"' EXIT
-          jq -n '{
-            configureAuth: {value: true},
-            entraClientId: {value: env.ENTRA_CLIENT_ID},
-            reviewerObjectId: {value: env.REVIEWER_ID},
-            entraClientSecret: {value: env.ENTRA_CLIENT_SECRET}
-          }' > "$config"
-          az deployment group what-if -g "$RESOURCE_GROUP" -f deploy/hosted-demo.bicep \
-            -p "@$config" --result-format ResourceIdOnly
-          az deployment group create -g "$RESOURCE_GROUP" -n "$DEPLOYMENT" \
-            -f deploy/hosted-demo.bicep -p "@$config" --query properties.outputs -o json
-          site=$(az webapp show -g "$RESOURCE_GROUP" -n "$app" --query id -o tsv)
-          arm=$(az cloud show --query endpoints.resourceManager -o tsv)
-          az rest --method get \
-            --url "${arm%/}$site/config/authsettingsV2/list?api-version=2024-04-01" -o json |
-            jq -e --arg client "$ENTRA_CLIENT_ID" --arg reviewer "$REVIEWER_ID" '
-              .properties |
-              .platform.enabled == true and
-              .globalValidation.requireAuthentication == true and
-              .globalValidation.redirectToProvider == "azureactivedirectory" and
-              ((.globalValidation.excludedPaths // []) | length == 0) and
-              .identityProviders.azureActiveDirectory.enabled == true and
-              .identityProviders.azureActiveDirectory.registration.clientId == $client and
-              .identityProviders.azureActiveDirectory.validation.defaultAuthorizationPolicy.allowedPrincipals.identities == [$reviewer]
-            ' >/dev/null
-          az rest --method patch --url "${arm%/}$site?api-version=2024-04-01" \
-            --body '{"properties":{"publicNetworkAccess":"Enabled"}}' -o none
-          echo "Enabled public HTTPS access behind the verified Entra sign-in settings." >> "$GITHUB_STEP_SUMMARY"
-
       - uses: actions/setup-dotnet@v4
-        if: inputs.operation == 'publish'
         with:
           dotnet-version: '10.0.x'
       - uses: actions/setup-node@v4
-        if: inputs.operation == 'publish'
         with:
           node-version: '22'
 
       - name: Verify host and configure the demo
         id: host
-        if: inputs.operation == 'publish'
         env:
           MONGO_URL: ${{ secrets.DEMO_MONGO_CONNECTION_STRING }}
         run: bash deploy/configure-hosted-demo.sh
 
       - name: Build release package
-        if: inputs.operation == 'publish'
         run: |
           npm --prefix frontend install --no-audit --no-fund
           bash deploy/package-hosted-demo.sh "$RUNNER_TEMP/telecomiq-hosted-demo.zip"
 
       - uses: azure/webapps-deploy@v3
-        if: inputs.operation == 'publish'
         with:
           app-name: ${{ steps.host.outputs.app_name }}
           package: ${{ runner.temp }}/telecomiq-hosted-demo.zip
 
       - name: Check anonymous access
-        if: inputs.operation == 'publish'
         env:
           HOST: ${{ steps.host.outputs.hostname }}
         run: |
