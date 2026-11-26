@@ -1,0 +1,21 @@
+﻿{
+    "profiles": {
+        "TelecomIQ.Worker": {
+            "commandName": "Project",
+      "environmentVariables": {
+                "DOTNET_ENVIRONMENT": "Development",
+        "Mongo__ConnectionString": "mongodb://127.0.0.1:27017",
+        "Mongo__Database": "telecomiq-dev",
+        "Azure__ServiceBusNamespace": "sb-tq-fxwt5ietl6nyc.servicebus.windows.net",
+        "Azure__Queue": "contract-jobs",
+        "Azure__BlobContainer": "https://sttqfxwt5ietl6nyc.blob.core.windows.net/contracts",
+        "Azure__OpenAI": "https://aoai-tq-fxwt5ietl6nyc.openai.azure.com",
+        "Azure__ChatDeployment": "telecomiq-chat",
+        "Azure__EmbeddingDeployment": "telecomiq-embedding",
+        "Azure__Search": "https://telecomiq-fxwt5ietl6nyc.search.windows.net",
+        "Azure__SearchIndex": "contracts",
+        "Azure__DocumentIntelligence": "https://telecomiq-di-fxwt5ietl6nyc.cognitiveservices.azure.com"
+      }
+        }
+    }
+}

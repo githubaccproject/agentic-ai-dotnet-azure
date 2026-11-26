@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "New Profile",
+    "Projects": [
+      {
+        "Path": "src\\TelecomIQ.Api\\TelecomIQ.Api.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "src\\TelecomIQ.Worker\\TelecomIQ.Worker.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]
