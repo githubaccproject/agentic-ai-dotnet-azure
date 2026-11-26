@@ -1,6 +1,6 @@
 # TelecomIQ development connectivity
 
-Use only fictional agreements and policies. The Web API currently exposes business endpoints only in Development. Run it on a trusted local interface until application authentication and authorization are implemented.
+Use only fictional agreements and policies. The Web API exposes business endpoints in local Development and in the authenticated App Service demo. See the [hosted demo setup](../deploy/hosted-demo.md).
 
 ## API and Worker settings
 
@@ -50,6 +50,7 @@ For local development, point both processes at the same MongoDB instance and dat
 - The MongoDB development export confirmed all seven sample policy PDFs at `Ready` by matching their SHA-256 hashes. The legal policy was indexed twice under different IDs.
 - The Development API and worker support selected-policy comparison, recorded reviewer decisions, and re-review of a revised agreement. See the [workflow check](#verify-policy-comparison-and-re-review) below.
 - The Release build, focused .NET checks, Development API smoke check, and local MongoDB repository smoke passed. The React workflow passed in Chromium with mocked API responses.
+- The live agreement-only review received HTTP 429 in the Worker. The review now runs its categories sequentially, retries throttled JSON requests with Azure's retry hint, and records a throttled failure if the retry budget is exhausted. Live re-verification is pending.
 - Live Azure comparison and re-review still need verification. Policy publication approval, deterministic rules, authenticated reviewer roles, and hosted deployment remain separate milestones.
 
 ## Verify policy ingestion

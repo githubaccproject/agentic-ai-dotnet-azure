@@ -24,7 +24,8 @@ public sealed class Repository(IMongoDatabase db):IRepository {
  public async Task<bool> UpdateReviewProgress(Review review, CancellationToken ct)
  {
   var filter = Builders<Review>.Filter.Where(r => r.Id == review.Id && r.Status != "Completed");
-  var update = Builders<Review>.Update.Set(r => r.Status, review.Status);
+  var update = Builders<Review>.Update.Set(r => r.Status, review.Status)
+   .Set(r => r.FailureCode, review.FailureCode);
   if (review.Status == "Completed")
    update = update.Set(r => r.Findings, review.Findings).Set(r => r.RevisionChecks, review.RevisionChecks);
   return (await Reviews.UpdateOneAsync(filter, update, cancellationToken: ct)).MatchedCount == 1;

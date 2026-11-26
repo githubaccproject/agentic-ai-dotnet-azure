@@ -1,3 +1,4 @@
+using Azure.Core;
 using Azure.Identity;
 using Azure.Storage.Blobs;
 using Azure.Messaging.ServiceBus;
@@ -19,6 +20,7 @@ public static class DependencyInjection {
   string Get(string key)=>config[key]??throw new InvalidOperationException($"Missing {key}");
   BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard));
   services.AddSingleton(new DefaultAzureCredential());
+  services.AddSingleton<TokenCredential>(sp => sp.GetRequiredService<DefaultAzureCredential>());
   services.AddSingleton(sp=>new BlobContainerClient(new Uri(Get("Azure:BlobContainer")),sp.GetRequiredService<DefaultAzureCredential>()));
   services.AddSingleton(sp=>new ServiceBusClient(Get("Azure:ServiceBusNamespace"),sp.GetRequiredService<DefaultAzureCredential>()));
   services.AddSingleton(sp=>sp.GetRequiredService<ServiceBusClient>().CreateSender(Get("Azure:Queue")));

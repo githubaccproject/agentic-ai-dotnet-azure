@@ -1,3 +1,4 @@
+using System.Net;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson.Serialization.Serializers;
@@ -11,7 +12,7 @@ using TelecomIQ.Domain;
 BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard));
 var sample = new Review(Guid.NewGuid(), Guid.NewGuid(), "Completed", []);
 var legacyRow = sample.ToBsonDocument();
-foreach (var field in new[] { "Policies", "PreviousReviewId", "RevisionChecks", "Decisions" })
+foreach (var field in new[] { "Policies", "PreviousReviewId", "RevisionChecks", "Decisions", "FailureCode" })
     legacyRow.Remove(field);
 var legacy = BsonSerializer.Deserialize<Review>(legacyRow);
 Check(legacy.Policies.Length == 0 && legacy.Decisions.Length == 0 && legacy.RevisionChecks.Length == 0,
@@ -89,6 +90,17 @@ await worker.Run(agreement.Id, existingFlow.Id, ct);
 Check((await store.GetReview(existingFlow.Id, ct))!.Status == "Completed",
     "Submitting an agreement-only review should still work.");
 
+providers.ThrottleAgreementReview = true;
+var throttled = (await service.SubmitAsync(agreement.Id, [], null, ct)).Review!;
+var attemptsBeforeThrottle = providers.AgreementAnalysisAttempts;
+await worker.Run(agreement.Id, throttled.Id, ct);
+await worker.Run(agreement.Id, throttled.Id, ct);
+var failed = (await store.GetReview(throttled.Id, ct))!;
+Check(failed.Status == "Failed" && failed.FailureCode == Review.Throttled
+    && providers.AgreementAnalysisAttempts == attemptsBeforeThrottle + 1,
+    "Throttle exhaustion should end the review once without replaying other categories.");
+
+await AzureThrottleChecks.Run();
 Console.WriteLine("Policy review checks passed.");
 
 static void Check(bool condition, string failure)
@@ -154,10 +166,17 @@ sealed class ReviewStore : IRepository, IPolicyRepository
 
 sealed class EvidenceProviders(Guid originalId, Guid policyId) : IAi, IPolicyReviewAi, ISearch, IPolicySearch
 {
+    public bool ThrottleAgreementReview { get; set; }
+    public int AgreementAnalysisAttempts { get; private set; }
     public string RevisionCitation { get; set; } = "revision";
 
     public Task<float[]> Embed(string text, CancellationToken ct) => Task.FromResult<float[]>([1]);
-    public Task<Finding[]> Analyze(string category, Evidence[] evidence, CancellationToken ct) => Task.FromResult<Finding[]>([]);
+    public Task<Finding[]> Analyze(string category, Evidence[] evidence, CancellationToken ct)
+    {
+        AgreementAnalysisAttempts++;
+        if (ThrottleAgreementReview) throw new HttpRequestException("Rate limited.", null, HttpStatusCode.TooManyRequests);
+        return Task.FromResult<Finding[]>([]);
+    }
 
     public Task<Evidence[]> Retrieve(Guid id, string query, float[] vector, CancellationToken ct) =>
         Task.FromResult<Evidence[]>(id == originalId

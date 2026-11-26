@@ -27,6 +27,8 @@ public sealed record Review(Guid Id, Guid ContractId, string Status, Finding[] F
     // Older MongoDB rows predate these collections and deserialize their fields as null.
     public PolicyReference[] Policies { get => field ?? []; init; }
     public Guid? PreviousReviewId { get; init; }
+    public const string Throttled = "Throttled";
+    public string? FailureCode { get; init; }
     public RevisionCheck[] RevisionChecks { get => field ?? []; init; }
     public FindingDecision[] Decisions { get => field ?? []; init; }
 }

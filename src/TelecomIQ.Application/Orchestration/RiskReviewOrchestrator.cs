@@ -1,3 +1,4 @@
+using System.Net;
 using TelecomIQ.Application.Agents;
 using TelecomIQ.Domain;
 
@@ -17,7 +18,7 @@ public sealed class RiskReviewOrchestrator(IRepository repository, RiskAgent age
         var review = await repository.GetReview(reviewId, ct) ?? throw new InvalidOperationException("Unknown review");
         if (review.ContractId != contractId)
             throw new InvalidOperationException("Contract mismatch");
-        if (review.Status == "Completed")
+        if (review.Status == "Completed" || review.FailureCode == Review.Throttled)
             return;
 
         var doc = await repository.Get(contractId, ct);
@@ -29,9 +30,14 @@ public sealed class RiskReviewOrchestrator(IRepository repository, RiskAgent age
 
         try
         {
-            var results = await Task.WhenAll(ReviewTopics.Select(topic => review.Policies.Length == 0
-                ? agent.Run(contractId, topic.Category, topic.Query, ct)
-                : policyAgent.Run(contractId, topic.Category, topic.Query, review.Policies, ct)));
+            var findings = new List<Finding>();
+            foreach (var topic in ReviewTopics)
+            {
+                var result = review.Policies.Length == 0
+                    ? await agent.Run(contractId, topic.Category, topic.Query, ct)
+                    : await policyAgent.Run(contractId, topic.Category, topic.Query, review.Policies, ct);
+                findings.AddRange(result);
+            }
 
             var checks = new List<RevisionCheck>();
             if (review.PreviousReviewId is Guid previousId)
@@ -50,9 +56,14 @@ public sealed class RiskReviewOrchestrator(IRepository repository, RiskAgent age
             await repository.UpdateReviewProgress(review with
             {
                 Status = "Completed",
-                Findings = results.SelectMany(result => result).ToArray(),
+                Findings = findings.ToArray(),
                 RevisionChecks = checks.ToArray()
             }, ct);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests && !ct.IsCancellationRequested)
+        {
+            // Finish the delivery after saving the failure so Service Bus does not replay all calls immediately.
+            await repository.UpdateReviewProgress(review with { Status = "Failed", FailureCode = Review.Throttled }, ct);
         }
         catch
         {

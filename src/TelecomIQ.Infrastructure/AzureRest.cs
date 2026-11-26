@@ -1,26 +1,93 @@
 using Azure.Core;
-using Azure.Identity;
 using TelecomIQ.Application;
 using TelecomIQ.Domain;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 namespace TelecomIQ.Infrastructure;
-public sealed class AzureRest(HttpClient http,DefaultAzureCredential credential,IConfiguration config):IAi,IPolicyReviewAi,ISearch,IPolicySearch,IExtractor {
+public sealed class AzureRest(HttpClient http, TokenCredential credential, IConfiguration config, ILogger<AzureRest> logger):IAi,IPolicyReviewAi,ISearch,IPolicySearch,IExtractor {
+ private const int MaxThrottleRetries = 3;
+ private static readonly TimeSpan MaxRetryDelay = TimeSpan.FromMinutes(2);
+ private const string SearchScope = "https://search.azure.com/.default";
+
  private string Required(string key)=>config[key]??throw new InvalidOperationException($"Missing configuration: {key}");
- private async Task<HttpResponseMessage> Send(HttpMethod method,string url,string scope,HttpContent? body,CancellationToken ct) {
-  using var req=new HttpRequestMessage(method,url){Content=body};
-  req.Headers.Authorization=new AuthenticationHeaderValue("Bearer",(await credential.GetTokenAsync(new TokenRequestContext([scope]),ct)).Token);
-  var response=await http.SendAsync(req,ct);
-  if(!response.IsSuccessStatusCode){var status=response.StatusCode;response.Dispose();throw new HttpRequestException($"Azure request failed: {status}",null,status);}
-  return response;
+
+ private async Task<HttpResponseMessage> Send(HttpMethod method, Uri endpoint, string scope, HttpContent? body, CancellationToken ct)
+ {
+  using var request = new HttpRequestMessage(method, endpoint) { Content = body };
+  var token = await credential.GetTokenAsync(new TokenRequestContext([scope]), ct);
+  request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
+  return await http.SendAsync(request, ct);
  }
- private async Task<JsonElement> Json(string url,string scope,object body,CancellationToken ct) {
-  using var response=await Send(HttpMethod.Post,url,scope,JsonContent.Create(body),ct);
-  return await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken:ct);
+
+ private async Task<JsonElement> Json(string url, string scope, object body, CancellationToken ct)
+ {
+  var endpoint = new Uri(url);
+  for (var retry = 0; ; retry++)
+  {
+   TimeSpan delay;
+   using (var response = await Send(HttpMethod.Post, endpoint, scope, JsonContent.Create(body), ct))
+   {
+    if (response.IsSuccessStatusCode)
+     return await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+
+    if (response.StatusCode != HttpStatusCode.TooManyRequests)
+     throw RequestFailed(endpoint, response);
+
+    delay = RetryDelay(response, retry);
+    if (retry >= MaxThrottleRetries || delay > MaxRetryDelay)
+    {
+     logger.LogWarning("Azure throttled {Host}{Path}. The request exceeded the retry budget.",
+      endpoint.Host, endpoint.AbsolutePath);
+     throw RequestFailed(endpoint, response);
+    }
+   }
+
+   logger.LogWarning("Azure throttled {Host}{Path}. Waiting {DelayMs} ms before retry {Retry} of {MaxRetries}.",
+    endpoint.Host, endpoint.AbsolutePath, delay.TotalMilliseconds, retry + 1, MaxThrottleRetries);
+   await Task.Delay(delay, ct);
+  }
  }
+
+ private static TimeSpan RetryDelay(HttpResponseMessage response, int retry)
+ {
+  foreach (var name in new[] { "retry-after-ms", "x-ms-retry-after-ms" })
+  {
+   if (response.Headers.TryGetValues(name, out var values)
+    && long.TryParse(values.FirstOrDefault(), NumberStyles.None, CultureInfo.InvariantCulture, out var milliseconds))
+    return milliseconds > MaxRetryDelay.TotalMilliseconds ? TimeSpan.MaxValue : TimeSpan.FromMilliseconds(milliseconds);
+  }
+
+  var retryAfter = response.Headers.RetryAfter;
+  if (retryAfter?.Delta is TimeSpan delta) return delta;
+  if (retryAfter?.Date is DateTimeOffset date)
+  {
+   var delay = date - DateTimeOffset.UtcNow;
+   return delay > TimeSpan.Zero ? delay : TimeSpan.Zero;
+  }
+
+  return TimeSpan.FromMilliseconds(1000 * (1 << retry) + Random.Shared.Next(0, 251));
+ }
+
+ private async Task<HttpResponseMessage> SendExtraction(HttpMethod method, string url, HttpContent? body, CancellationToken ct)
+ {
+  var endpoint = new Uri(url);
+  var response = await Send(method, endpoint, "https://cognitiveservices.azure.com/.default", body, ct);
+  if (response.IsSuccessStatusCode) return response;
+
+  var error = RequestFailed(endpoint, response);
+  response.Dispose();
+  throw error;
+ }
+
+ private static HttpRequestException RequestFailed(Uri endpoint, HttpResponseMessage response) => new(
+  $"Azure request to {endpoint.Host}{endpoint.AbsolutePath} failed with HTTP {(int)response.StatusCode} ({response.StatusCode}).",
+  null, response.StatusCode);
+
  private string OpenAi(string deployment,string operation)=>$"{Required("Azure:OpenAI").TrimEnd('/')}/openai/deployments/{Required(deployment)}/{operation}?api-version=2024-10-21";
  public async Task<float[]> Embed(string text,CancellationToken ct) {
   var result=await Json(OpenAi("Azure:EmbeddingDeployment","embeddings"),"https://cognitiveservices.azure.com/.default",new{input=text},ct);
@@ -118,11 +185,11 @@ public sealed class AzureRest(HttpClient http,DefaultAzureCredential credential,
  }, ct, config["Azure:PolicySearchIndex"] ?? "policies");
  private async Task IndexDocument(Dictionary<string,object> document, CancellationToken ct, string? index = null) {
   document["@search.action"] = "mergeOrUpload";
-  var result = await Json(SearchUrl("index", index), "https://search.azure.com/.default", new { value = new[] { document } }, ct);
+  var result = await Json(SearchUrl("index", index), SearchScope, new { value = new[] { document } }, ct);
   if(result.GetProperty("value").EnumerateArray().Any(x=>!x.GetProperty("status").GetBoolean())) throw new InvalidOperationException("Indexing failed");
  }
  public async Task<Evidence[]> Retrieve(Guid id,string query,float[] vector,CancellationToken ct) {
-  var result=await Json(SearchUrl("search"),"https://search.azure.com/.default",new{search=query,filter=$"contractId eq '{id}'",select="id,page,text",top=8,vectorQueries=new[]{new{kind="vector",vector,fields="vector",k=20}}},ct);
+  var result=await Json(SearchUrl("search"),SearchScope,new{search=query,filter=$"contractId eq '{id}'",select="id,page,text",top=8,vectorQueries=new[]{new{kind="vector",vector,fields="vector",k=20}}},ct);
   return result.GetProperty("value").EnumerateArray().Select(x=>new Evidence(x.GetProperty("id").GetString()!,x.GetProperty("page").GetInt32(),x.GetProperty("text").GetString()!)).ToArray();
  }
  public async Task<PolicyEvidence[]> Retrieve(PolicyReference[] policies, string query, float[] vector, CancellationToken ct)
@@ -139,7 +206,7 @@ public sealed class AzureRest(HttpClient http,DefaultAzureCredential credential,
    vectorQueries = new[] { new { kind = "vector", vector, fields = "vector", k = 20 } }
   };
   var result = await Json(SearchUrl("search", config["Azure:PolicySearchIndex"] ?? "policies"),
-   "https://cognitiveservices.azure.com/.default", request, ct);
+   SearchScope, request, ct);
   return result.GetProperty("value").EnumerateArray().Select(e => new PolicyEvidence(
    e.GetProperty("id").GetString()!, Guid.Parse(e.GetProperty("policyId").GetString()!),
    int.Parse(e.GetProperty("policyVersion").GetString()!, CultureInfo.InvariantCulture),
@@ -149,12 +216,12 @@ public sealed class AzureRest(HttpClient http,DefaultAzureCredential credential,
  public async Task<Page[]> Extract(Stream stream,CancellationToken ct) {
   var endpoint=Required("Azure:DocumentIntelligence").TrimEnd('/');
   using var body=new StreamContent(stream);body.Headers.ContentType=new MediaTypeHeaderValue("application/pdf");
-  using var initial=await Send(HttpMethod.Post,$"{endpoint}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2024-11-30","https://cognitiveservices.azure.com/.default",body,ct);
+  using var initial=await SendExtraction(HttpMethod.Post,$"{endpoint}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2024-11-30",body,ct);
   var operation=initial.Headers.GetValues("Operation-Location").Single();
   if(new Uri(operation).Host!=new Uri(endpoint).Host) throw new InvalidOperationException("Unexpected operation host");
   for(int i=0;i<120;i++){
    await Task.Delay(TimeSpan.FromSeconds(2),ct);
-   using var response=await Send(HttpMethod.Get,operation,"https://cognitiveservices.azure.com/.default",null,ct);
+   using var response=await SendExtraction(HttpMethod.Get,operation,null,ct);
    var result=await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken:ct);
    var status=result.GetProperty("status").GetString();
    if(status=="failed")throw new InvalidOperationException("Extraction failed");

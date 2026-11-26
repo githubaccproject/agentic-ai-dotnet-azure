@@ -226,7 +226,9 @@ export default function App() {
           </div>
           <span className="pill" data-status={review.status}>{review.status}</span>
         </div>}
-        {reviewStatus === 'Failed' && <p role="alert">Review failed. Check the Worker logs before starting another review.</p>}
+        {reviewStatus === 'Failed' && <p role="alert">{review?.failureCode === 'Throttled'
+          ? 'Azure is temporarily limiting requests. Wait a minute, then start the review again.'
+          : 'Review failed. Check the Worker logs before starting another review.'}</p>}
       </section>
       <section id="findings">
         <h2>03 · Risk findings</h2>

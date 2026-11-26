@@ -49,6 +49,7 @@ export interface Review {
   contractId: string;
   status: 'Queued' | 'Processing' | 'Completed' | 'Failed';
   findings: Finding[];
+  failureCode?: string | null;
   policies?: PolicyReference[];
   previousReviewId?: string | null;
   revisionChecks?: RevisionCheck[];
