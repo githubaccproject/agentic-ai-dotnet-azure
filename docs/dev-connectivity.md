@@ -51,6 +51,7 @@ For local development, point both processes at the same MongoDB instance and dat
 - The Development API and worker support selected-policy comparison, recorded reviewer decisions, and re-review of a revised agreement. See the [workflow check](#verify-policy-comparison-and-re-review) below.
 - The Release build, focused .NET checks, Development API smoke check, and local MongoDB repository smoke passed. The React workflow passed in Chromium with mocked API responses.
 - The live agreement-only review received HTTP 429 in the Worker. The review now runs its categories sequentially, retries throttled JSON requests with Azure's retry hint, and records a throttled failure if the retry budget is exhausted. Live re-verification is pending.
+- The F1 hosted demo passed the Entra configuration workflow. An anonymous request received HTTP 401 while the site was starting up, and the explicit sign-in endpoint returned a Microsoft Entra redirect. End-to-end reviewer sign-in and deployment are pending. All 13 outbound App Service IPs were verified in the Atlas access list.
 - Live Azure comparison and re-review still need verification. Policy publication approval, deterministic rules, authenticated reviewer roles, and hosted deployment remain separate milestones.
 
 ## Verify policy ingestion
