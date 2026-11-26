@@ -17,17 +17,13 @@ public sealed class DocumentsController(IContractService contracts) : Controller
         [FromForm] UploadContractRequest request, CancellationToken cancellationToken)
     {
         var file = request.File;
-        if (file.Length < 5 || file.Length > 20 * 1024 * 1024 ||
-            !file.FileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        if (!PdfUpload.HasSupportedNameAndSize(file))
             return Problem(statusCode: 400, detail: "PDF up to 20 MB required.");
 
         await using var stream = file.OpenReadStream();
-        var header = new byte[5];
-        if (await stream.ReadAtLeastAsync(header, 5, false, cancellationToken) != 5 ||
-            !header.AsSpan().SequenceEqual("%PDF-"u8))
+        if (!await PdfUpload.HasValidHeader(stream, cancellationToken))
             return Problem(statusCode: 400, detail: "Invalid PDF header.");
 
-        stream.Position = 0;
         var contract = await contracts.UploadAsync(stream, cancellationToken);
         return AcceptedAtAction(nameof(GetById), new { id = contract.Id }, ContractResponse.From(contract));
     }

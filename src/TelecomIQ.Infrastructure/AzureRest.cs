@@ -4,10 +4,11 @@ using TelecomIQ.Application;
 using TelecomIQ.Domain;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 namespace TelecomIQ.Infrastructure;
-public sealed class AzureRest(HttpClient http,DefaultAzureCredential credential,IConfiguration config):IAi,ISearch,IExtractor {
+public sealed class AzureRest(HttpClient http,DefaultAzureCredential credential,IConfiguration config):IAi,ISearch,IPolicySearch,IExtractor {
  private string Required(string key)=>config[key]??throw new InvalidOperationException($"Missing configuration: {key}");
  private async Task<HttpResponseMessage> Send(HttpMethod method,string url,string scope,HttpContent? body,CancellationToken ct) {
   using var req=new HttpRequestMessage(method,url){Content=body};
@@ -34,9 +35,28 @@ public sealed class AzureRest(HttpClient http,DefaultAzureCredential credential,
   using var doc=JsonDocument.Parse(content);
   return doc.RootElement.GetProperty("findings").Deserialize<Finding[]>(new JsonSerializerOptions{PropertyNameCaseInsensitive=true})??[];
  }
- private string SearchUrl(string operation)=>$"{Required("Azure:Search").TrimEnd('/')}/indexes/{Required("Azure:SearchIndex")}/docs/{operation}?api-version=2024-07-01";
- public async Task Index(Chunk chunk,CancellationToken ct) {
-  var result=await Json(SearchUrl("index"),"https://search.azure.com/.default",new{value=new[]{new Dictionary<string,object>{{"@search.action","mergeOrUpload"},{"id",chunk.Id},{"contractId",chunk.ContractId.ToString()},{"page",chunk.Page},{"text",chunk.Text},{"vector",chunk.Vector}}}},ct);
+ private string SearchUrl(string operation, string? index = null) =>
+  $"{Required("Azure:Search").TrimEnd('/')}/indexes/{index ?? Required("Azure:SearchIndex")}/docs/{operation}?api-version=2024-07-01";
+ public Task Index(Chunk chunk,CancellationToken ct) => IndexDocument(new Dictionary<string,object>
+ {
+  ["id"] = chunk.Id,
+  ["contractId"] = chunk.ContractId.ToString(),
+  ["page"] = chunk.Page,
+  ["text"] = chunk.Text,
+  ["vector"] = chunk.Vector
+ }, ct);
+ public Task Index(PolicyChunk chunk, CancellationToken ct) => IndexDocument(new Dictionary<string,object>
+ {
+  ["id"] = chunk.Id,
+  ["policyId"] = chunk.PolicyId.ToString(),
+  ["policyVersion"] = chunk.Version.ToString(CultureInfo.InvariantCulture),
+  ["page"] = chunk.Page,
+  ["text"] = chunk.Text,
+  ["vector"] = chunk.Vector
+ }, ct, config["Azure:PolicySearchIndex"] ?? "policies");
+ private async Task IndexDocument(Dictionary<string,object> document, CancellationToken ct, string? index = null) {
+  document["@search.action"] = "mergeOrUpload";
+  var result = await Json(SearchUrl("index", index), "https://search.azure.com/.default", new { value = new[] { document } }, ct);
   if(result.GetProperty("value").EnumerateArray().Any(x=>!x.GetProperty("status").GetBoolean())) throw new InvalidOperationException("Indexing failed");
  }
  public async Task<Evidence[]> Retrieve(Guid id,string query,float[] vector,CancellationToken ct) {

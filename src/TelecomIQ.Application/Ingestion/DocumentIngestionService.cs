@@ -10,13 +10,9 @@ public sealed class DocumentIngestionService(IRepository repository, IStorage st
    await using var stream = await storage.Download(doc.BlobPath, ct);
    var pages = await extractor.Extract(stream, ct);
    var count = 0;
-   foreach(var page in pages) {
-    for(int offset=0; offset<page.Text.Length; offset+=1400) {
-     var text=page.Text.Substring(offset, Math.Min(1600,page.Text.Length-offset));
-     if(string.IsNullOrWhiteSpace(text)) continue;
-     await search.Index(new Chunk($"{id:N}-{page.Number}-{offset}",id,page.Number,text,await ai.Embed(text,ct)),ct);
-     count++;
-    }
+   foreach (var (page, offset, text) in DocumentChunker.Split(pages)) {
+    await search.Index(new Chunk($"{id:N}-{page}-{offset}", id, page, text, await ai.Embed(text, ct)), ct);
+    count++;
    }
    if(count==0) throw new InvalidOperationException("No extractable text");
    await repository.Save(doc with { Status = ProcessingStatus.Ready },ct);

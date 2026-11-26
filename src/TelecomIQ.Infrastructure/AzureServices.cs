@@ -11,7 +11,9 @@ public sealed class BlobStorage(BlobContainerClient container):IStorage {
  public async Task<Stream> Download(string path,CancellationToken ct) => (await container.GetBlobClient(path).DownloadStreamingAsync(cancellationToken:ct)).Value.Content;
 }
 public sealed class Queue(ServiceBusSender sender):IQueue {
- public async Task Send(Job job,CancellationToken ct) => await sender.SendMessageAsync(new ServiceBusMessage(JsonSerializer.Serialize(job)){MessageId=$"{job.Kind}-{job.ContractId}-{job.ReviewId}"},ct);
+ public async Task Send(Job job,CancellationToken ct) => await sender.SendMessageAsync(new ServiceBusMessage(JsonSerializer.Serialize(job)){
+  MessageId = job.PolicyVersionId is string id ? $"{job.Kind}-{id}" : $"{job.Kind}-{job.ContractId}-{job.ReviewId}"
+ },ct);
 }
 public sealed class Repository(IMongoDatabase db):IRepository {
  private IMongoCollection<Contract> Contracts=>db.GetCollection<Contract>("contracts");

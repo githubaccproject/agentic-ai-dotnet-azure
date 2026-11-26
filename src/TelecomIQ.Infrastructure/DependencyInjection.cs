@@ -12,6 +12,7 @@ using TelecomIQ.Application.Ingestion;
 using TelecomIQ.Application.RAG;
 using TelecomIQ.Application.Agents;
 using TelecomIQ.Application.Orchestration;
+using TelecomIQ.Application.Services;
 namespace TelecomIQ.Infrastructure;
 public static class DependencyInjection {
  public static IServiceCollection AddTelecomIQ(this IServiceCollection services,IConfiguration config) {
@@ -27,7 +28,18 @@ public static class DependencyInjection {
   services.AddSingleton<AzureRest>();
   services.AddSingleton<IAi>(sp=>sp.GetRequiredService<AzureRest>());
   services.AddSingleton<ISearch>(sp=>sp.GetRequiredService<AzureRest>());
+  services.AddSingleton<IPolicySearch>(sp=>sp.GetRequiredService<AzureRest>());
   services.AddSingleton<IExtractor>(sp=>sp.GetRequiredService<AzureRest>());
+  services.AddSingleton<IPolicyStorage>(sp =>
+  {
+   var container = config["Azure:PolicyBlobContainer"] is string policyUrl
+    ? new Uri(policyUrl)
+    : new Uri(sp.GetRequiredService<BlobContainerClient>().Uri, "/policies");
+   return new PolicyStorage(new BlobContainerClient(container, sp.GetRequiredService<DefaultAzureCredential>()));
+  });
+  services.AddSingleton<IPolicyRepository, PolicyRepository>();
+  services.AddSingleton<PolicyUploadService>();
+  services.AddSingleton<PolicyIngestionService>();
   services.AddSingleton<DocumentIngestionService>();services.AddSingleton<RagService>();services.AddSingleton<RiskAgent>();services.AddSingleton<RiskReviewOrchestrator>();
   return services;
  }
