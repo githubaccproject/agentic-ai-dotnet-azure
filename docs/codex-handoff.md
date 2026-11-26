@@ -1,0 +1,36 @@
+# TelecomIQ Codex handoff
+
+## Project goal
+
+Build a telecom vendor agreement risk assessment application. The intended workflow compares vendor clauses with approved company policy versions, combines AI findings with deterministic C# checks, and sends evidence to a human reviewer. Use fictional telecom documents throughout.
+
+The repository is `githubaccproject/agentic-ai-dotnet-azure`, branch `main`. The application uses a .NET 10 Web API and Worker Service, React and TypeScript, MongoDB, Azure Blob Storage, Service Bus, Document Intelligence, Azure OpenAI, and Azure AI Search. Bicep and GitHub Actions manage infrastructure using Azure OIDC.
+
+## Verified baseline
+
+| Area | Evidence |
+| --- | --- |
+| Local setup | React runs on `localhost:5173`. The API and worker run in Visual Studio, with both processes connected to local MongoDB at `127.0.0.1:27017` and database `telecomiq-dev`. |
+| Azure inventory | Resource group `rg-telecomiq-dev` has Blob Storage, Service Bus, Azure OpenAI, Document Intelligence, and AI Search. The `contracts` and `policies` containers and indexes exist. The chat deployment uses GPT-4.1 mini and the embedding deployment uses text-embedding-3-small. Consult the [dev connectivity notes](dev-connectivity.md) for the endpoint names, deployment names, and provisioning evidence. |
+| Runtime access | Eight scoped role assignments were confirmed for the local developer signed into Azure CLI. They cover the jobs queue, the two containers, the two indexes, Azure OpenAI, and Document Intelligence. Hosted API and worker identities will need their own role assignments. |
+| Contract upload and ingestion | The UI showed `Ready` for agreement `1e1e6bbe-211c-4af9-9733-9ecf08cbe61a`. Its PDF was visible in Blob Storage, its MongoDB row had `Status: 2`, and Search Explorer returned two chunks from page 1. The index reports 1,536 dimensions for the vector field. |
+| Versioned policy ingestion | Implemented in commit `b325cc5`. The .NET Release build passed. Local checks exercised retry, version isolation, the Swagger routes, and bad PDF rejection. The Azure portal showed an empty `policies` index before this feature was tested live. |
+| Build warnings | Existing NuGet vulnerability warnings for Microsoft.OpenApi, SharpCompress, and Snappier remain open. |
+
+The verified contract flow is React upload → API → Blob Storage and MongoDB → `contract-jobs` → worker → Document Intelligence → overlapping C# chunks → Azure OpenAI embeddings → Azure AI Search → MongoDB status → UI. The contract chunker takes up to 1,600 characters at a 1,400-character stride.
+
+## Fictional test files
+
+- [TelecomIQ_Fictional_Vendor_Agreement.pdf](../samples/TelecomIQ_Fictional_Vendor_Agreement.pdf) is the original one-page PDF used for the verified contract ingestion.
+- [TelecomIQ_Seven_Sample_Policies.zip](../samples/TelecomIQ_Seven_Sample_Policies.zip) contains the seven fictional policies for the vendor baseline, legal, commercial, network SLA, security, privacy, and disaster recovery. Extract the ZIP and upload individual PDFs.
+
+## Continue in the Windows Codex project
+
+Use the `agentic-ai-dotnet-azure` checkout as the project working directory. Inspect `git status` before pulling and preserve existing local changes. Run the API in Development with its `http` profile and start the worker from the same checkout. Keep local MongoDB running. The [development connectivity guide](dev-connectivity.md) contains the current endpoints and permissions. Existing local profiles use Azure developer sign-in and local MongoDB.
+
+1. **Verify the contract review.** Use the already-Ready agreement in React. If the page has been reset, load the contract ID above through **Resume existing work → Agreement ID → Load**. Click **Start risk review**. Verify `Completed`, the findings or empty result in React, and the matching review record in MongoDB. The review code runs Vendor Legal, Commercial, and Telecom Security & Compliance against retrieved contract chunks. Completion has yet to be observed.
+2. **Verify policy ingestion live.** From the API's `/swagger` page, submit one of the policy PDFs to `POST /api/policies/{policyId}/versions/{version}`. Generate a new GUID for that policy and use version `1`. Poll the matching `GET` for `Ready` and confirm the policy ID, version, page, and text in the `policies` index. Submit revisions with the same policy ID and a new version number. Follow the [policy verification procedure](dev-connectivity.md#verify-policy-ingestion).
+3. **Build approved-policy comparison.** Add policy management and approval, pin the applicable approved versions when a review is created, retrieve policy passages alongside contract clauses, and show both sources in React. Add deterministic C# rule checks and a human approval decision.
+4. **Prepare for hosted operation.** Finish authentication and authorization, retries and reconciliation, idempotency, logging and token tracking, unit/integration/end-to-end tests, hosted MongoDB connectivity, and deployment verification. Record architecture and demonstrate the full workflow once verified.
+
+Use GitHub Actions for Azure operations. Keep spending limits enabled, reuse the existing development resources, and obtain approval before creating additional billable resources. Keep credentials and personal account identifiers out of commits and logs. Record verified milestones in this handoff and the [connectivity progress log](dev-connectivity.md#development-verification).
