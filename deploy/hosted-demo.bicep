@@ -27,7 +27,7 @@ resource app 'Microsoft.Web/sites@2024-04-01' = {
   properties: {
     serverFarmId: plan.id
     httpsOnly: true
-    publicNetworkAccess: configureAuth ? 'Enabled' : 'Disabled'
+    publicNetworkAccess: 'Disabled'
     siteConfig: {
       linuxFxVersion: 'DOTNETCORE|10.0'
       alwaysOn: false

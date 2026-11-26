@@ -64,7 +64,7 @@ jobs:
           fi
 
       - name: Configure Entra sign-in
-        if: inputs.operation == 'configure-auth'
+        if: inputs.operation == 'configure-auth' || github.event_name == 'push'
         env:
           ENTRA_CLIENT_ID: ${{ vars.DEMO_ENTRA_CLIENT_ID }}
           REVIEWER_ID: ${{ vars.DEMO_REVIEWER_OBJECT_ID }}
@@ -81,7 +81,7 @@ jobs:
             --query "[?name=='HostedDemo__Enabled'].value | [0]" -o tsv)
           if [[ "$enabled" == true ]]; then
             echo "The demo is already published. Manage sign-in settings on the app."
-            exit 1
+            exit 0
           fi
           config=$(mktemp)
           trap 'rm -f -- "$config"' EXIT
@@ -95,6 +95,23 @@ jobs:
             -p "@$config" --result-format ResourceIdOnly
           az deployment group create -g "$RESOURCE_GROUP" -n "$DEPLOYMENT" \
             -f deploy/hosted-demo.bicep -p "@$config" --query properties.outputs -o json
+          site=$(az webapp show -g "$RESOURCE_GROUP" -n "$app" --query id -o tsv)
+          arm=$(az cloud show --query endpoints.resourceManager -o tsv)
+          az rest --method get \
+            --url "${arm%/}$site/config/authsettingsV2/list?api-version=2024-04-01" -o json |
+            jq -e --arg client "$ENTRA_CLIENT_ID" --arg reviewer "$REVIEWER_ID" '
+              .properties |
+              .platform.enabled == true and
+              .globalValidation.requireAuthentication == true and
+              .globalValidation.redirectToProvider == "azureactivedirectory" and
+              ((.globalValidation.excludedPaths // []) | length == 0) and
+              .identityProviders.azureActiveDirectory.enabled == true and
+              .identityProviders.azureActiveDirectory.registration.clientId == $client and
+              .identityProviders.azureActiveDirectory.validation.defaultAuthorizationPolicy.allowedPrincipals.identities == [$reviewer]
+            ' >/dev/null
+          az rest --method patch --url "${arm%/}$site?api-version=2024-04-01" \
+            --body '{"properties":{"publicNetworkAccess":"Enabled"}}' -o none
+          echo "Enabled public HTTPS access behind the verified Entra sign-in settings." >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/setup-dotnet@v4
         if: inputs.operation == 'publish'
