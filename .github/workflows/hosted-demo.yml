@@ -66,14 +66,15 @@ jobs:
       - name: Configure Entra sign-in
         if: inputs.operation == 'configure-auth' || github.event_name == 'push'
         env:
-          ENTRA_CLIENT_ID: ${{ vars.DEMO_ENTRA_CLIENT_ID }}
-          REVIEWER_ID: ${{ vars.DEMO_REVIEWER_OBJECT_ID }}
+          ENTRA_CLIENT_ID: ${{ secrets.DEMO_ENTRA_CLIENT_ID || vars.DEMO_ENTRA_CLIENT_ID }}
+          REVIEWER_ID: ${{ secrets.DEMO_REVIEWER_OBJECT_ID || vars.DEMO_REVIEWER_OBJECT_ID }}
           ENTRA_CLIENT_SECRET: ${{ secrets.DEMO_ENTRA_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           : "${ENTRA_CLIENT_ID:?Set DEMO_ENTRA_CLIENT_ID}"
           : "${REVIEWER_ID:?Set DEMO_REVIEWER_OBJECT_ID}"
           : "${ENTRA_CLIENT_SECRET:?Set DEMO_ENTRA_CLIENT_SECRET}"
+          printf '::add-mask::%s\n' "$ENTRA_CLIENT_ID" "$REVIEWER_ID"
           app=$(az deployment group show -g "$RESOURCE_GROUP" -n "$DEPLOYMENT" \
             --query properties.outputs.name.value -o tsv)
           : "${app:?Provision the F1 host first}"
