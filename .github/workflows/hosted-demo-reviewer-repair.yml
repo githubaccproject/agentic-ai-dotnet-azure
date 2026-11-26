@@ -1,0 +1,73 @@
+name: TelecomIQ reviewer repair
+on:
+  push:
+    branches: [codex/publish-main-c13858b]
+    paths: [.github/workflows/hosted-demo-reviewer-repair.yml]
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: telecomiq-hosted-demo
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    environment: azure-dev
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Update and verify the reviewer
+        env:
+          REVIEWER_CHECK: 'd7c4c7393b978c896b2e4937c63ddd3716f26cffbed7f1f10072a0898a2d3456'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=telecomiq-demo-x6ub3bqyhbii6
+          group=rg-telecomiq-dev
+          tenant=$(az account show --query tenantId -o tsv)
+          site=$(az webapp show --resource-group "$group" --name "$app" --query id -o tsv)
+          [[ "${site,,}" == /subscriptions/*/resourcegroups/*/providers/microsoft.web/sites/"$app" ]]
+          auth="https://management.azure.com$site/config/authsettingsV2"
+          version=2024-04-01
+          policy=$(az rest --method get --url "$auth/list?api-version=$version" --query properties -o json)
+          old=$(jq -er --arg tenant "$tenant" '
+            . as $pol |
+            .identityProviders.azureActiveDirectory as $aad |
+            $aad.validation.defaultAuthorizationPolicy.allowedPrincipals.identities as $ids |
+            select($pol.platform.enabled == true and $pol.globalValidation.requireAuthentication == true and $aad.enabled == true) |
+            select(($aad.registration.openIdIssuer | ascii_downcase | endswith("/" + ($tenant | ascii_downcase) + "/v2.0"))) |
+            select(($ids | length) == 1) |
+            $ids[0] | select(type == "string" and length > 0)
+          ' <<< "$policy")
+          reviewers=$(az role assignment list --scope "$site" --include-inherited --fill-principal-name false --query "[?principalType=='User'].principalId" -o tsv)
+          reviewer=
+          while IFS= read -r candidate; do
+            [[ "$candidate" =~ ^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$ ]] || continue
+            digest=$(printf '%s' "${candidate,,}" | sha256sum | cut -d' ' -f1)
+            if [[ "$digest" == "$REVIEWER_CHECK" ]]; then reviewer=$candidate; break; fi
+          done <<< "$reviewers"
+          [[ -n "$reviewer" ]] || { echo "Could not match the requested reviewer to an Azure user on this resource."; exit 1; }
+          echo "::add-mask::$reviewer"
+          payload=$(mktemp)
+          trap 'rm -f -- "$payload"' EXIT
+          if [[ "${old,,}" != "${reviewer,,}" ]]; then
+            jq --arg reviewer "$reviewer" '{properties: (.identityProviders.azureActiveDirectory.validation.defaultAuthorizationPolicy.allowedPrincipals.identities = [$reviewer])}' <<< "$policy" > "$payload"
+            az rest --method put --url "$auth?api-version=$version" --body "@$payload" --headers Content-Type=application/json --output none
+          fi
+          reviewerSetting="[?name=='HostedDemo__ReviewerObjectIds'].value | [0]"
+          appReviewer=$(az webapp config appsettings list --resource-group "$group" --name "$app" --query "$reviewerSetting" -o tsv)
+          if [[ "${appReviewer,,}" != "${reviewer,,}" ]]; then
+            az webapp config appsettings set --resource-group "$group" --name "$app" --settings "HostedDemo__ReviewerObjectIds=$reviewer" --output none
+          fi
+          livePolicy=$(az rest --method get --url "$auth/list?api-version=$version" --query properties -o json)
+          jq -e --arg reviewer "$reviewer" '
+            .platform.enabled == true and
+            .globalValidation.requireAuthentication == true and
+            .identityProviders.azureActiveDirectory.validation.defaultAuthorizationPolicy.allowedPrincipals.identities == [$reviewer]
+          ' <<< "$livePolicy" >/dev/null
+          liveReviewer=$(az webapp config appsettings list --resource-group "$group" --name "$app" --query "$reviewerSetting" -o tsv)
+          [[ "${liveReviewer,,}" == "${reviewer,,}" ]]
+          echo "Verified that App Service and TelecomIQ both use the requested reviewer and still require authentication."
