@@ -21,6 +21,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Check Atlas connectivity through App Service settings and telemetry
         env:
+          ATLAS_NODE: ac-680hukg-shard-00-00.pj54qnu.mongodb.net
           ATLAS_HOST: telecomiq-demo.pj54qnu.mongodb.net
         shell: bash
         run: |
@@ -42,6 +43,17 @@ jobs:
           ' "$ATLAS_HOST"
           db=$(az webapp config appsettings list -g "$group" -n "$app" --query "[?name=='Mongo__Database'].value | [0]" -o tsv)
           [[ "$db" != "telecomiq-demo" ]] || echo "The App Service points to the expected database."
+          probe="sh -c 'printf \"Outbound IPv4: \"; curl -4 -fsS --max-time 7 https://api.ipify.org; printf \"\\nAtlas TLS probe:\\n\"; timeout 10 openssl s_client -connect $ATLAS_NODE:27017 -servername $ATLAS_NODE -verify_return_error -brief -CApath /etc/ssl/certs </dev/null' > /home/LogFiles/telecomiq-atlas-probe.log 2>&1"
+          if timeout 25 az webapp exec -g "$group" -n "$app" --mode execute --command "$probe" --only-show-errors -o none > "$tmp/exec.log" 2>&1; then
+            echo "App Service accepted the runtime probe."
+            sleep 12
+            if timeout 30 az webapp log download -g "$group" -n "$app" --log-file "$tmp/diag.zip" --only-show-errors -o none > "$tmp/download.log" 2>&1; then
+              unzip -p "$tmp/diag.zip" '*telecomiq-atlas-probe.log' 2>/dev/null |
+                grep -Ei 'Outbound IPv4|Atlas TLS probe|CONNECTION ESTABLISHED|Protocol version|Verification:|alert|SSL|certificate|network|timed out|refused|not found' || true
+            fi
+          else
+            echo "The CLI could not launch a runtime probe on this site."
+          fi
           component=$(az resource list -g "$group" --resource-type Microsoft.Insights/components --query "[?name=='$app'].id | [0]" -o tsv)
           if [[ -z "$component" ]]; then
             echo "The matching Application Insights resource was not found in the demo resource group."
@@ -68,6 +80,9 @@ jobs:
           codes = sorted(set(re.findall(r'SocketException\s*\(([0-9]+)\)', raw)))
           if codes:
               print("Socket error codes:", ", ".join(codes))
+          for pattern in (r'SSL_ERROR_[A-Z_]+', r'error:[0-9A-Fa-f]{8}:SSL routines:[A-Za-z0-9 _:-]{2,95}', r'tlsv[0-9.]+ alert [A-Za-z ]{3,35}', r'alert number [0-9]{1,3}', r'\b(?:UntrustedRoot|PartialChain|NotTimeValid|Revoked|RemoteCertificateNameMismatch|RemoteCertificateChainErrors)\b'):
+              for hint in sorted(set(re.findall(pattern, raw, re.I))):
+                  print("TLS detail:", hint)
           PY
           else
             if grep -qiE 'Forbidden|AuthorizationFailed|InsufficientAccessError' "$tmp/cli.err"; then
