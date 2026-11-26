@@ -45,6 +45,15 @@ jobs:
             echo "The demo host already exists."
             exit 0
           fi
+          if [[ "$OPERATION" == provision ]]; then
+            state=$(az provider show --namespace Microsoft.Web --query registrationState -o tsv --only-show-errors || true)
+            if [[ "$state" != Registered ]]; then
+              if ! timeout 180 az provider register --namespace Microsoft.Web --wait --only-show-errors; then
+                echo "An administrator can register Microsoft.Web on the Azure subscription, then rerun this job."
+                exit 1
+              fi
+            fi
+          fi
           az deployment group what-if -g "$RESOURCE_GROUP" -f deploy/hosted-demo.bicep --result-format ResourceIdOnly
           if [[ "$OPERATION" == provision ]]; then
             az deployment group create -g "$RESOURCE_GROUP" -n "$DEPLOYMENT" \
