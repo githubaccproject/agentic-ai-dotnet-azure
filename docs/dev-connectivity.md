@@ -37,6 +37,14 @@ The contracts index backs the current code. The policies index holds policy chun
 
 The API and Worker use `DefaultAzureCredential`. Use the signed-in developer identity for a local demo and separate managed identities when application hosts exist. Identify the principal object IDs before assigning roles. The Azure deployment workflow logged in through its federated principal. Its permissions are independent of the API and Worker.
 
-Configure an Atlas free cluster, a database user scoped to `telecomiq-dev`, and an IP access list for the actual runtime egress. Store the connection string in each runtime's secret configuration. Verify with a MongoDB ping and an actual contract upload that advances to Ready, then run a review through completion. The current `/health` endpoint only establishes that the API process answers.
+For local development, point both processes at the same MongoDB instance and database. The local smoke test used `mongodb://127.0.0.1:27017` with `telecomiq-dev`. For a hosted deployment, configure Atlas, a database user scoped to `telecomiq-dev`, and an IP access list for the runtime egress. Store the Atlas connection string in each runtime's secret configuration.
+
+
+## Development verification
+
+- Verified on 26 November 2026 that the local React UI and API accepted a fictional PDF and showed the document as `Ready`. The upload path writes the PDF to Blob Storage, stores contract metadata in MongoDB, and sends an ingestion job to Service Bus. The worker sets `Ready` after extraction with Document Intelligence, embedding generation with Azure OpenAI, and chunk indexing in Azure AI Search.
+- Confirmed eight scoped role assignments for the local developer account across the contract jobs queue, both Blob containers, both search indexes, Azure OpenAI, and Document Intelligence. The ingestion test exercised the contract path.
+- Next checkpoint is to start an AI risk review for the ready document and verify that it reaches `Completed` with a stored result. The review chat deployment and findings UI still need this runtime check.
+- Policy ingestion and versioning, contract-to-policy comparison, deterministic checks, and human approval are pending. Hosted MongoDB and application deployment also need verification.
 
 See [Azure AI Search RBAC](https://learn.microsoft.com/en-us/azure/search/search-security-rbac) for index scoping and [Azure built-in roles](https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles) for Azure data-plane grants.
