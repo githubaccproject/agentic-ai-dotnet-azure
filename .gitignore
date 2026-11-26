@@ -4,3 +4,4 @@
 .env
 **/local.settings.json
 **/appsettings.Local.json
+/frontend/package-lock.json
