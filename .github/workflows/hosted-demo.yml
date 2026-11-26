@@ -1,5 +1,5 @@
 name: TelecomIQ hosted demo
-run-name: Publish TelecomIQ from main c13858b
+run-name: Publish TelecomIQ from main 7261885
 on:
   push:
     branches: [codex/publish-main-c13858b]
@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: c13858bc877338cf80beb43a12bf13ba51a98226
+          ref: 7261885aab0cc1502efec9e8e87879cb612ea87a
           persist-credentials: false
       - uses: azure/login@v2
         with:
