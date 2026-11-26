@@ -15,8 +15,9 @@ outputs=$(az deployment group show -g "$RESOURCE_GROUP" -n "$DEPLOYMENT" --query
 app=$(jq -er '.name.value' <<< "$outputs")
 host=$(jq -er '.hostname.value' <<< "$outputs")
 site=$(az webapp show -g "$RESOURCE_GROUP" -n "$app" --query id -o tsv)
-plan=$(az webapp show -g "$RESOURCE_GROUP" -n "$app" --query serverFarmId -o tsv)
-sku=$(az resource show --ids "$plan" --query sku.name -o tsv)
+plan=$(az resource show --ids "$site" --api-version 2024-04-01 --query properties.serverFarmId -o tsv)
+[[ "$plan" == /subscriptions/* ]] || { echo "Could not resolve the App Service plan for $app."; exit 1; }
+sku=$(az appservice plan show --ids "$plan" --query sku.name -o tsv)
 [[ "$sku" == F1 ]] || { echo "Expected the F1 free App Service plan."; exit 1; }
 
 arm=$(az cloud show --query endpoints.resourceManager -o tsv)
