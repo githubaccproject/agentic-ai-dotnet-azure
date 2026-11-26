@@ -2,17 +2,17 @@ using TelecomIQ.Domain;
 
 namespace TelecomIQ.Api.Contracts;
 
-public sealed record ContractResponse(Guid Id, string Status)
+public sealed record ContractResponse(Guid Id, string Status, Guid? PreviousContractId)
 {
     public static ContractResponse From(Contract contract)
-        => new(contract.Id, contract.Status.ToString());
+        => new(contract.Id, contract.Status.ToString(), contract.PreviousContractId);
 }
 
-public sealed record FindingResponse(string Category, string Severity, string Description, string EvidenceId);
-
-public sealed record ReviewResponse(Guid Id, Guid ContractId, string Status, FindingResponse[] Findings)
+public sealed record ReviewResponse(
+    Guid Id, Guid ContractId, string Status, Finding[] Findings, PolicyReference[] Policies,
+    Guid? PreviousReviewId, RevisionCheck[] RevisionChecks, FindingDecision[] Decisions)
 {
     public static ReviewResponse From(Review review)
-        => new(review.Id, review.ContractId, review.Status,
-            review.Findings.Select(f => new FindingResponse(f.Category, f.Severity, f.Description, f.EvidenceId)).ToArray());
+        => new(review.Id, review.ContractId, review.Status, review.Findings, review.Policies,
+            review.PreviousReviewId, review.RevisionChecks, review.Decisions);
 }

@@ -13,6 +13,7 @@ public sealed class DocumentsController(IContractService contracts) : Controller
     [RequestSizeLimit(21 * 1024 * 1024)]
     [ProducesResponseType(typeof(ContractResponse), StatusCodes.Status202Accepted)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ContractResponse>> Upload(
         [FromForm] UploadContractRequest request, CancellationToken cancellationToken)
     {
@@ -24,7 +25,8 @@ public sealed class DocumentsController(IContractService contracts) : Controller
         if (!await PdfUpload.HasValidHeader(stream, cancellationToken))
             return Problem(statusCode: 400, detail: "Invalid PDF header.");
 
-        var contract = await contracts.UploadAsync(stream, cancellationToken);
+        var contract = await contracts.UploadAsync(stream, request.PreviousContractId, cancellationToken);
+        if (contract is null) return Problem(statusCode: 404, detail: "Previous agreement not found.");
         return AcceptedAtAction(nameof(GetById), new { id = contract.Id }, ContractResponse.From(contract));
     }
 

@@ -27,6 +27,8 @@ public static class DependencyInjection {
   services.AddSingleton(new HttpClient{Timeout=TimeSpan.FromSeconds(90)});
   services.AddSingleton<AzureRest>();
   services.AddSingleton<IAi>(sp=>sp.GetRequiredService<AzureRest>());
+  services.AddSingleton<IPolicyReviewAi>(sp => sp.GetRequiredService<AzureRest>());
+  services.AddSingleton<PolicyReviewAgent>();
   services.AddSingleton<ISearch>(sp=>sp.GetRequiredService<AzureRest>());
   services.AddSingleton<IPolicySearch>(sp=>sp.GetRequiredService<AzureRest>());
   services.AddSingleton<IExtractor>(sp=>sp.GetRequiredService<AzureRest>());

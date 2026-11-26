@@ -1,13 +1,19 @@
 using Microsoft.AspNetCore.Mvc;
 using TelecomIQ.Api.Contracts;
 using TelecomIQ.Application.Services;
+using TelecomIQ.Application;
 
 namespace TelecomIQ.Api.Controllers;
 
 [ApiController]
 [Route("api/policies/{policyId:guid}/versions/{version:int}")]
-public sealed class PoliciesController(PolicyUploadService policies) : ControllerBase
+public sealed class PoliciesController(PolicyUploadService policies, IPolicyRepository repository) : ControllerBase
 {
+    [HttpGet("/api/policies")]
+    [ProducesResponseType(typeof(PolicyVersionResponse[]), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PolicyVersionResponse[]>> ListReady(CancellationToken ct) =>
+        Ok((await repository.ListReady(ct)).Select(PolicyVersionResponse.From).ToArray());
+
     [HttpPost]
     [Consumes("multipart/form-data")]
     [RequestSizeLimit(21 * 1024 * 1024)]

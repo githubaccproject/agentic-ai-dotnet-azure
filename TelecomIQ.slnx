@@ -4,4 +4,5 @@
   <Project Path="src/TelecomIQ.Domain/TelecomIQ.Domain.csproj" />
   <Project Path="src/TelecomIQ.Infrastructure/TelecomIQ.Infrastructure.csproj" />
   <Project Path="src/TelecomIQ.Worker/TelecomIQ.Worker.csproj" />
+  <Project Path="tests/TelecomIQ.ReviewChecks/TelecomIQ.ReviewChecks.csproj" />
 </Solution>

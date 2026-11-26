@@ -8,6 +8,10 @@ public sealed class PolicyRepository(IMongoDatabase db) : IPolicyRepository
 {
     private readonly IMongoCollection<PolicyVersion> policies = db.GetCollection<PolicyVersion>("policyVersions");
 
+    public async Task<PolicyVersion[]> ListReady(CancellationToken ct) =>
+        (await policies.Find(policy => policy.Status == PolicyIngestionStatus.Ready)
+            .SortBy(policy => policy.PolicyId).ThenByDescending(policy => policy.Version).ToListAsync(ct)).ToArray();
+
     public async Task<PolicyVersion> Reserve(PolicyVersion policy, CancellationToken ct)
     {
         try

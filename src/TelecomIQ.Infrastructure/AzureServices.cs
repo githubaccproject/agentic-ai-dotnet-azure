@@ -21,5 +21,24 @@ public sealed class Repository(IMongoDatabase db):IRepository {
  public async Task Save(Contract c,CancellationToken ct)=>await Contracts.ReplaceOneAsync(x=>x.Id==c.Id,c,new ReplaceOptions{IsUpsert=true},ct);
  public async Task<Contract?> Get(Guid id,CancellationToken ct)=>await Contracts.Find(x=>x.Id==id).FirstOrDefaultAsync(ct);
  public async Task SaveReview(Review r,CancellationToken ct)=>await Reviews.ReplaceOneAsync(x=>x.Id==r.Id,r,new ReplaceOptions{IsUpsert=true},ct);
+ public async Task<bool> UpdateReviewProgress(Review review, CancellationToken ct)
+ {
+  var filter = Builders<Review>.Filter.Where(r => r.Id == review.Id && r.Status != "Completed");
+  var update = Builders<Review>.Update.Set(r => r.Status, review.Status);
+  if (review.Status == "Completed")
+   update = update.Set(r => r.Findings, review.Findings).Set(r => r.RevisionChecks, review.RevisionChecks);
+  return (await Reviews.UpdateOneAsync(filter, update, cancellationToken: ct)).MatchedCount == 1;
+ }
+
+ public async Task<bool> AppendDecision(Guid reviewId, FindingDecision decision, CancellationToken ct)
+ {
+  var filters = Builders<Review>.Filter;
+  var filter = filters.Where(r => r.Id == reviewId && r.Status == "Completed")
+   & filters.ElemMatch(r => r.Findings, finding => finding.Id == decision.FindingId)
+   & filters.Not(filters.ElemMatch(r => r.Decisions, item => item.Id == decision.Id));
+  return (await Reviews.UpdateOneAsync(filter, Builders<Review>.Update.Push(r => r.Decisions, decision),
+   cancellationToken: ct)).MatchedCount == 1;
+ }
+
  public async Task<Review?> GetReview(Guid id,CancellationToken ct)=>await Reviews.Find(x=>x.Id==id).FirstOrDefaultAsync(ct);
 }
