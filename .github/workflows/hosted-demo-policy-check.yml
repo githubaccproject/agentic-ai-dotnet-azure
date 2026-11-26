@@ -1,0 +1,78 @@
+name: TelecomIQ policy upload check
+on:
+  push:
+    branches: [codex/publish-main-c13858b]
+    paths: [.github/workflows/hosted-demo-policy-check.yml]
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: telecomiq-hosted-demo
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    environment: azure-dev
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Check upload failure and runtime permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=telecomiq-demo-x6ub3bqyhbii6
+          group=rg-telecomiq-dev
+          tmp=$(mktemp -d)
+          trap 'rm -rf -- "$tmp"' EXIT
+          if timeout 60 az webapp log download -g "$group" -n "$app" --log-file "$tmp/app.zip" -o none >"$tmp/cli.log" 2>&1; then
+            python3 - "$tmp/app.zip" <<'PY'
+          import re
+          import sys
+          import zipfile
+          
+          trace = "9a3d4dcc602b529fa626ccb3ed2e29a0"
+          markers = [
+              "MongoAuthenticationException", "MongoConnectionException", "MongoCommandException",
+              "MongoWriteException", "AuthenticationFailed", "Name or service not known",
+              "TimeoutException", "ServerSelection", "AuthorizationPermissionMismatch",
+              "AuthorizationFailure", "ContainerNotFound", "BlobNotFound", "ServiceBusException",
+              "MessagingEntityNotFound", "CredentialUnavailableException", "AuthenticationFailedException",
+              "RequestFailedException", "NotSupportedException", "PdfUpload", "PolicyUploadService",
+              "PolicyRepository", "PolicyStorage", "PoliciesController", "UnauthorizedAccessException",
+              "ArgumentOutOfRangeException", "InvalidOperationException", "WriteConcernError",
+              "not authorized on", "InsertOneAsync", "DefaultAzureCredential", "AmqpException",
+              "getaddrinfo", "Cannot access a disposed", "Cannot access a closed Stream",
+          ]
+          with zipfile.ZipFile(sys.argv[1]) as logs:
+              candidates = [n for n in logs.namelist() if re.search(r'(docker|application|stdout|console)', n, re.I) and n.endswith((".log", ".txt"))]
+              print(f"Application log files found: {len(candidates)}")
+              matched = False
+              for filename in candidates[-30:]:
+                  with logs.open(filename) as handle:
+                      text = handle.read(8_000_000).decode("utf-8", "replace")
+                  lines = text.splitlines()
+                  anchors = [i for i, line in enumerate(lines) if trace in line or "PolicyUploadService.Upload" in line or "PoliciesController.Upload" in line]
+                  for i in anchors[-8:]:
+                      window = "\n".join(lines[max(0, i-65):i+35])
+                      hits = [marker for marker in markers if marker.lower() in window.lower()]
+                      class_names = sorted(set(re.findall(r'\b(?:Azure|MongoDB|System|Microsoft|TelecomIQ)(?:\.[A-Za-z_][A-Za-z0-9_]*)+Exception\b', window)))
+                      if hits or class_names:
+                          matched = True
+                          print(f"Upload log match (exact trace: {trace in window}): {', '.join(hits + class_names)}")
+              if not matched:
+                  print("The upload exception was not available in the downloaded logs.")
+          PY
+          else
+            echo "App Service log download did not return an archive."
+          fi
+          principal=$(az webapp identity show -g "$group" -n "$app" --query principalId -o tsv)
+          scope=$(az group show -n "$group" --query id -o tsv)
+          blob="$scope/providers/Microsoft.Storage/storageAccounts/sttqfxwt5ietl6nyc/blobServices/default/containers/policies"
+          queue="$scope/providers/Microsoft.ServiceBus/namespaces/sb-tq-fxwt5ietl6nyc/queues/hosted-demo-jobs"
+          echo "Policy container access:"
+          az role assignment list --assignee-object-id "$principal" --scope "$blob" --include-inherited --fill-principal-name false --query '[].roleDefinitionName' -o tsv
+          echo "Hosted queue access:"
+          az role assignment list --assignee-object-id "$principal" --scope "$queue" --include-inherited --fill-principal-name false --query '[].roleDefinitionName' -o tsv
