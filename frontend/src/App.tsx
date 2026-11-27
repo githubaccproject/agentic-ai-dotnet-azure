@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import ChatPanel from './ChatPanel';
 import { FindingCard, RevisionResults } from './ReviewFindings';
 import type { Contract, DecisionInput, PolicyReference, Review } from './types';
 
@@ -148,7 +149,7 @@ export default function App() {
     <aside>
       <div className="brand"><span className="logo">TQ</span> TelecomIQ</div>
       <p className="muted">Telecom vendor risk intelligence</p>
-      <nav><a href="#upload">01 · Documents</a><a href="#review">02 · Risk review</a><a href="#findings">03 · Findings</a></nav>
+      <nav><a href="#upload">01 · Documents</a><a href="#review">02 · Risk review</a><a href="#findings">03 · Findings</a><a href="#chat">04 · AI Assistant</a></nav>
       <div className="side-note">Development workspace<br/>.NET 10 · Azure AI</div>
     </aside>
     <main>
@@ -259,6 +260,9 @@ export default function App() {
         </div>}
         <p className="muted">Review AI findings and suggested wording before making a decision.</p>
       </section>
+      <ChatPanel key={(contractId ?? '') + ':' + (reviewStatus === 'Completed' ? reviewId : '')}
+        contractId={contractStatus === 'Ready' ? contractId : undefined}
+        reviewId={reviewStatus === 'Completed' ? reviewId : undefined}/>
       <section>
         <h2>Resume existing work</h2>
         <div className="resume">

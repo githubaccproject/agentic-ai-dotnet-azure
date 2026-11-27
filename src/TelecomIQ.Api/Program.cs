@@ -36,6 +36,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
 builder.Services.AddTelecomIQ(builder.Configuration);
+builder.Services.AddSingleton<ChatStore>();
 builder.Services.AddScoped<IContractService, ContractService>();
 builder.Services.AddScoped<IRiskReviewService, RiskReviewService>();
 

@@ -223,3 +223,23 @@ Use the [fictional agreement](samples/TelecomIQ_Fictional_Vendor_Agreement.pdf) 
 This is a learning and reference implementation, not legal advice or a production contract approval system. Only fictional documents are supported. Evidence ID checks do not prove semantic accuracy or exhaustive coverage. Reviewer names are currently entered manually; production should bind decisions to verified identities. Prompt-only injection defenses are not sufficient for production. There is no transactional outbox or guarantee of exactly-once execution, and advanced concurrency, quality evaluation, telemetry and security controls remain open. Reuse existing resources and obtain approval before provisioning billable services.
 
 Existing API routes and data schemas are retained for compatibility. TelecomIQ is the business-facing and internal project name; existing Azure resources are not renamed automatically.
+
+## 9. Conversational contract assistant
+
+Load a Ready agreement, optionally complete a policy review, then use **04 · AI Assistant**. A chat is pinned to the agreement and completed review (if any) and owned by the signed-in demo reviewer. Chat-only retrieval uses the agreement; a completed review enables pinned policy retrieval, findings, recorded decisions and private MCP tools. The model rewrites follow-ups, classifies the question into a specialist domain, compresses history, retrieves evidence and selects tools when useful. The server rejects unknown citation IDs and returns an insufficient-evidence response instead. Citation ID validation is structural. A second model call checks whether the answer is supported by the cited evidence and relevant to the question, and rejects answers it cannot support. This is a model-based quality gate, not independent proof or legal verification.
+
+```mermaid
+flowchart TD
+    U[React AI Assistant] --> C[Chat API / authenticated owner]
+    C --> M[(MongoDB scoped conversation history)]
+    C --> P[LLM query rewrite / specialist routing / summary]
+    P --> R[Hybrid RAG and review evidence]
+    R --> L[Azure OpenAI answer generation]
+    L <-->|Optional scoped tool calls| T[Private MCP server]
+    L --> V[Citation ID validation]
+    V --> M
+    V --> S[SSE progress and validated final answer]
+    S --> U
+```
+
+The UI streams progress events, not raw unvalidated LLM tokens. It displays citations, tool activity, token usage, latency and optional estimated cost. Configure `Chat__InputUsdPerMillion`, `Chat__OutputUsdPerMillion` and `Chat__EmbeddingUsdPerMillion` using actual deployment rates; estimates are unavailable if prices or usage are missing. MCP child embedding tokens are not currently reported. Instrumentation emits structured logs and ActivitySource/Meter signals; exporting custom telemetry to a collector requires configuration. Conversation history is retained in MongoDB until explicitly deleted. The demo uses shared fictional agreements; production requires document-level access control, retention policy, PII/content-safety controls, independently benchmarked semantic evaluation and further load testing. No new Azure resources are required. CI covers structural guardrails and MongoDB serialization; live authenticated chat tests remain required.

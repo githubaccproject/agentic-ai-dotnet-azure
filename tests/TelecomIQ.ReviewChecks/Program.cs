@@ -101,6 +101,15 @@ Check(failed.Status == "Failed" && failed.FailureCode == Review.Throttled
     "Throttle exhaustion should end the review once without replaying other categories.");
 
 await AzureThrottleChecks.Run();
+var chatSources = new Dictionary<string, ChatCitation> { ["real"] = new("real", "Agreement", 1, "Fictional evidence") };
+Check(TelecomIQ.Infrastructure.ChatSafety.Validate("Answer", ["real"], chatSources).Grounding == "CitationIdsValidated", "Known chat citations should be accepted.");
+Check(TelecomIQ.Infrastructure.ChatSafety.Validate("Invented", ["fake"], chatSources).Grounding == "InsufficientEvidence", "Unknown chat citations must be rejected.");
+Check(!TelecomIQ.Infrastructure.ChatSafety.ValidQuestion(new string('x', 1501)), "Chat input is bounded.");
+Check(!TelecomIQ.Infrastructure.ChatSafety.ValidQuestion(""), "Empty chat input is rejected.");
+var chat = new ChatSession(Guid.NewGuid(), "local-development", agreement.Id, first.Id, DateTime.UtcNow);
+var chatRow = BsonSerializer.Deserialize<ChatSession>(chat.ToBsonDocument());
+Check(chatRow.Id == chat.Id && chatRow.Owner == chat.Owner && chatRow.Turns.Length == 0, "Chat scope must round trip in MongoDB.");
+Console.WriteLine("Chat guardrail and serialization checks passed.");
 Console.WriteLine("Policy review checks passed.");
 
 static void Check(bool condition, string failure)
