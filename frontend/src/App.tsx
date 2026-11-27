@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
 import ChatPanel from './ChatPanel';
+import ProjectTopics from './ProjectTopics';
 import { FindingCard, RevisionResults } from './ReviewFindings';
 import type { Contract, DecisionInput, PolicyReference, Review } from './types';
 
@@ -159,7 +160,7 @@ export default function App() {
           <h1>Vendor risk assessment</h1>
           <p className="muted">Upload an agreement, compare it with company policies, and record reviewer decisions.</p>
         </div>
-        <span className="pill">Development</span>
+        <div className="header-actions"><ProjectTopics/><span className="pill">Development</span></div>
       </header>
       {error && <div role="alert" className="error">{error}
         <button onClick={() => {setError(''); setPollVersion(value => value + 1);}}>Dismiss / retry polling</button>
