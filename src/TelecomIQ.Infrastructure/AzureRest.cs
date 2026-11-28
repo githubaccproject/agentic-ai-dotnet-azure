@@ -1,4 +1,5 @@
 using Azure.Core;
+using Polly.CircuitBreaker;
 using TelecomIQ.Application;
 using TelecomIQ.Domain;
 using System.Net;
@@ -21,7 +22,15 @@ public sealed partial class AzureRest(HttpClient http, TokenCredential credentia
   using var request = new HttpRequestMessage(method, endpoint) { Content = body };
   var token = await credential.GetTokenAsync(new TokenRequestContext([scope]), ct);
   request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
-  return await http.SendAsync(request, ct);
+  try
+  {
+   return await AzureCircuitBreakers.For(endpoint, logger)
+    .ExecuteAsync(async token => await http.SendAsync(request, token), ct);
+  }
+  catch (BrokenCircuitException ex)
+  {
+   throw new HttpRequestException("Azure dependency temporarily unavailable. Please retry shortly.", ex, HttpStatusCode.ServiceUnavailable);
+  }
  }
 
  private async Task<JsonElement> Json(string url, string scope, object body, CancellationToken ct)
